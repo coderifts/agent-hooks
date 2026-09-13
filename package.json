@@ -1,15 +1,32 @@
 {
   "name": "@coderifts/openclaw-plugin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Ask CodeRifts before an agent writes a contract artifact.",
   "license": "MIT",
   "type": "module",
   "main": "./index.js",
-  "files": ["index.js", "openclaw.plugin.json", "README.md"],
+  "files": [
+    "index.js",
+    "gate.js",
+    "openclaw.plugin.json",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "peerDependencies": {
+    "openclaw": ">=2026.6.35"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
   "openclaw": {
     "extensions": ["./index.js"],
     "compat": {
       "pluginApi": ">=2026.6.35"
+    },
+    "build": {
+      "openclawVersion": "2026.6.35"
     }
   },
   "scripts": {

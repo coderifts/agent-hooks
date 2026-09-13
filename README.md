@@ -92,3 +92,7 @@ openclaw plugins install @coderifts/openclaw-plugin
 ```bash
 npm test
 ```
+
+`npm test` includes a pack-then-install case. In-repo imports cannot see a
+`files` allowlist that dropped a relative module — that is how 0.1.0 shipped
+without `gate.js`. Do not skip the pack test.

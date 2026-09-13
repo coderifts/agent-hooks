@@ -2,7 +2,7 @@
   "id": "coderifts-contract-gate",
   "name": "CodeRifts contract gate",
   "description": "Ask CodeRifts before an agent writes a contract artifact.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
