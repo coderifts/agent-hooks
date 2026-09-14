@@ -1,0 +1,18 @@
+{
+  "description": "Ask CodeRifts before Write/Edit of a contract artifact. Host timeout is 8s (seconds). Gate budget is 5000ms. If this process hangs past the host timeout, Claude Code fail-opens — named in the README.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 8,
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/claude-code/hook.mjs"]
+          }
+        ]
+      }
+    ]
+  }
+}

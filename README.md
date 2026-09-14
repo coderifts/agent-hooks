@@ -1,20 +1,27 @@
-# CodeRifts contract gate for OpenClaw
+# CodeRifts agent hooks (`@coderifts/agent-hooks`)
 
-Asks CodeRifts before an OpenClaw agent writes a contract artifact — an OpenAPI, AsyncAPI, GraphQL,
-protobuf or MCP manifest file. The answer becomes an OpenClaw `before_tool_call` result: the call
-continues, stops, or waits for a human.
+Asks CodeRifts before an agent writes a contract artifact — an OpenAPI, AsyncAPI, GraphQL,
+protobuf or MCP manifest file. **Hosts today:** OpenClaw `before_tool_call` and Claude Code
+`PreToolUse`. **Not built:** the Docker MCP Gateway `before:exec` interceptor — that path
+was measured (empty stdout = pass, CallToolResult JSON = block, HTTP 4xx empty = fail-open)
+and has no adapter in this package yet.
 
-The gate makes no policy decisions of its own. It recognises the file, sends the before/after to
-CodeRifts, and maps the answer back. Everything it cannot map, it puts to a human.
+This is the host-adapter package. It is not `@coderifts/agent-guard` (the wrapWithGuard
+library) and not `coderifts/contract-gate` (the GitHub Action). The npm name used to be
+`@coderifts/openclaw-plugin`; that name is wrong now that more than one host is wired.
+
+The same `gate.js` drives every host. The gate makes no policy decisions of its own. It
+recognises the file, sends the before/after to CodeRifts, and maps the answer back.
+Everything it cannot map, it puts to a human.
 
 ## What it does
 
-| CodeRifts `execution_action` | OpenClaw result |
-| --- | --- |
-| `CONTINUE`, `CONTINUE_WITH_MONITORING` | pass through |
-| `REQUEST_APPROVAL` | `requireApproval` |
-| `STOP` | `block`, with the reason and its limits |
-| anything else, or no answer | `requireApproval`, with a named reason |
+| CodeRifts `execution_action` | OpenClaw | Claude Code PreToolUse |
+| --- | --- | --- |
+| `CONTINUE`, `CONTINUE_WITH_MONITORING` | pass through | exit 0, empty stdout (never `allow`) |
+| `REQUEST_APPROVAL` | `requireApproval` | JSON `permissionDecision: "ask"` |
+| `STOP` | `block`, with the reason and its limits | JSON `permissionDecision: "deny"` |
+| anything else, or no answer | `requireApproval` | **exit 2 + stderr** (host is fail-open) |
 
 ## What it does not do
 
@@ -44,11 +51,28 @@ Does not prove:
 ## Fail-closed
 
 If CodeRifts is unreachable, times out, or answers something the gate cannot read, the result is
-`requireApproval` with the cause named — never a pass. Not knowing is not permission.
+not a pass. Not knowing is not permission.
 
-The gate's own budget defaults to 5000 ms, deliberately well under OpenClaw's 15000 ms
-`before_tool_call` budget: a slow answer should become a readable approval request, not an opaque
-host-level denial.
+The gate's own budget defaults to 5000 ms.
+
+On **OpenClaw**, that is well under the host's 15000 ms `before_tool_call` budget, so a slow
+answer becomes a readable approval request, not an opaque host denial. The host is fail-closed.
+
+On **Claude Code**, the host is **fail-open**: a timed-out command hook, exit 1, invalid JSON,
+or a missing script lets the tool run. The adapter therefore maps those failures to **exit 2**.
+The hook entry sets `"timeout": 8` (**seconds** — Claude Code's unit, not milliseconds) so the
+gate's 5000 ms abort can finish first. If `node` itself hangs past 8 s, Claude Code still
+lets the write through. That host behaviour cannot be fixed in this package.
+
+## What this gate does not see (Claude Code)
+
+The Claude Code matcher is `Write|Edit|MultiEdit`. A contract file written by a **shell
+command** (`cat > openapi.yaml`, `tee`, `python -c "open(...)"`, …) does not go through
+those tools, so this hook never runs. Parsing Bash to guess destination paths is not a
+gate — it would miss more than it caught. Treat a shell-written schema as unchecked.
+
+Does not prove:
+  - that a contract artifact written via Bash or PowerShell was seen at all
 
 ## Configuration
 
@@ -81,11 +105,34 @@ Registered on `before_tool_call` at `priority: 100`. OpenClaw runs handlers in d
 and keeps only the **first** `requireApproval`, so a gate that runs late can have its question
 dropped by an earlier plugin. A `block` is sticky and survives regardless of order.
 
-## Install
+## Install — OpenClaw
 
 ```bash
-openclaw plugins install @coderifts/openclaw-plugin
+openclaw plugins install @coderifts/agent-hooks
 ```
+
+(OpenClaw still records the plugin under the runtime id `coderifts-contract-gate` — that is
+the OpenClaw config key, not the GitHub Action.)
+
+## Install — Claude Code
+
+Copy `claude-code/settings.snippet.json` into `.claude/settings.json` (or merge the
+`hooks` key), after `npm install @coderifts/agent-hooks`. Optional env:
+`CODERIFTS_API_KEY`, `CODERIFTS_ENDPOINT`, `CODERIFTS_TIMEOUT_MS` (milliseconds, gate
+budget; default 5000).
+
+Plugin shape (for the existing `coderifts` marketplace): `.claude-plugin/plugin.json` +
+`hooks/hooks.json`. Add `claude-code/marketplace-entry.json` to
+`coderifts/api-governance` `.claude-plugin/marketplace.json` `plugins` array — that
+catalog today lists only `api-governance`. Then:
+
+```bash
+claude plugin marketplace update coderifts
+claude plugin install agent-hooks@coderifts
+```
+
+Do not use `permissionDecision: allow` for CONTINUE. Empty exit 0 leaves the normal
+permission prompt in place.
 
 ## Test
 
@@ -95,4 +142,5 @@ npm test
 
 `npm test` includes a pack-then-install case. In-repo imports cannot see a
 `files` allowlist that dropped a relative module — that is how 0.1.0 shipped
-without `gate.js`. Do not skip the pack test.
+without `gate.js`. The pack test also requires `claude-code/hook.mjs`. Do not
+skip it.

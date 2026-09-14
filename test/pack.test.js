@@ -56,7 +56,7 @@ describe("the packed tarball, not the checkout", () => {
       cwd: appRoot,
       encoding: "utf8",
     });
-    pkgRoot = join(appRoot, "node_modules", "@coderifts", "openclaw-plugin");
+    pkgRoot = join(appRoot, "node_modules", "@coderifts", "agent-hooks");
   });
 
   after(() => {
@@ -74,6 +74,21 @@ describe("the packed tarball, not the checkout", () => {
           `0.1.0 failed here because "files" omitted gate.js.`,
       );
     }
+  });
+
+  it("ships the Claude Code adapter and its relative import of gate.js", () => {
+    const hook = join(pkgRoot, "claude-code", "hook.mjs");
+    assert.ok(existsSync(hook), "packed tarball is missing claude-code/hook.mjs");
+    const src = readFileSync(hook, "utf8");
+    const rels = relativeSpecifiers(src);
+    assert.ok(rels.includes("../gate.js"), "hook.mjs must import ../gate.js");
+    for (const rel of rels) {
+      assert.ok(
+        existsSync(join(pkgRoot, "claude-code", rel)),
+        `packed tarball is missing ${rel} (imported by claude-code/hook.mjs)`,
+      );
+    }
+    assert.ok(existsSync(join(pkgRoot, "hooks", "hooks.json")));
   });
 
   it("loads the packed entry once a stub openclaw peer is present", async () => {

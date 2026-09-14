@@ -1,8 +1,16 @@
 {
-  "name": "@coderifts/openclaw-plugin",
-  "version": "0.1.1",
-  "description": "Ask CodeRifts before an agent writes a contract artifact.",
+  "name": "@coderifts/agent-hooks",
+  "version": "0.2.0",
+  "description": "Ask CodeRifts before an agent writes a contract artifact (OpenClaw before_tool_call and Claude Code PreToolUse).",
   "license": "MIT",
+  "homepage": "https://github.com/coderifts/agent-hooks#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/coderifts/agent-hooks.git"
+  },
+  "bugs": {
+    "url": "https://github.com/coderifts/agent-hooks/issues"
+  },
   "type": "module",
   "main": "./index.js",
   "files": [
@@ -10,7 +18,12 @@
     "gate.js",
     "openclaw.plugin.json",
     "README.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "claude-code/hook.mjs",
+    "claude-code/settings.snippet.json",
+    "claude-code/marketplace-entry.json",
+    "hooks/hooks.json",
+    ".claude-plugin/plugin.json"
   ],
   "peerDependencies": {
     "openclaw": ">=2026.6.35"
