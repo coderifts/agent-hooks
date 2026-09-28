@@ -126,20 +126,28 @@ describe("Claude Code adapter mappings", () => {
     assert.match(out.stderr, /boom/);
   });
 
-  it("Edit of a contract file uses new_string as the proposed body", async () => {
+  // Was "uses new_string as the proposed body" — that pinned the bug: new_string is a fragment, and
+  // this fixture's old_string was not even in the file. The after body is the file with the edit
+  // applied (2026-09-27; test/claude-bash-and-edit.test.js holds the rest).
+  it("Edit of a contract file sends the file with the edit applied as the proposed body", async () => {
     const stdin = JSON.stringify({
       hook_event_name: "PreToolUse",
       tool_name: "Edit",
       tool_input: {
         file_path: "/tmp/api/openapi.yaml",
-        old_string: "paths: {}",
-        new_string: OPENAPI,
+        old_string: "  /users: {}\n",
+        new_string: "  /users: {}\n  /teams: {}\n",
       },
     });
+    let sent;
     const out = await runClaudeHook(stdin, {
-      deps: gateWith(ok({ execution_action: "CONTINUE" })),
+      deps: {
+        askCodeRifts: async (a) => { sent = a.artifact; return ok({ execution_action: "CONTINUE" }); },
+        readFile: async () => OPENAPI,
+      },
     });
     assert.equal(out.exitCode, 0);
     assert.equal(out.stdout, "");
+    assert.equal(sent.after, OPENAPI.replace("  /users: {}\n", "  /users: {}\n  /teams: {}\n"));
   });
 });

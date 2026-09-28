@@ -64,15 +64,30 @@ The hook entry sets `"timeout": 8` (**seconds** — Claude Code's unit, not mill
 gate's 5000 ms abort can finish first. If `node` itself hangs past 8 s, Claude Code still
 lets the write through. That host behaviour cannot be fixed in this package.
 
-## What this gate does not see (Claude Code)
+## Shell writes (Claude Code)
 
-The Claude Code matcher is `Write|Edit|MultiEdit`. A contract file written by a **shell
-command** (`cat > openapi.yaml`, `tee`, `python -c "open(...)"`, …) does not go through
-those tools, so this hook never runs. Parsing Bash to guess destination paths is not a
-gate — it would miss more than it caught. Treat a shell-written schema as unchecked.
+The Claude Code matcher is `Write|Edit|MultiEdit|Bash`. A shell command cannot be gated — the
+hook never sees the bytes it would leave — so the hook does something narrower: a Bash command
+that **names a recognised contract file and has a write shape** (a redirect, `tee`, `sed -i`,
+`perl -i`, `cp`/`mv`/`rm`, `git checkout|restore|apply`, `open(…, "w")`, `curl -o`, …) is
+**denied** with a pointer to the Write or Edit tool, where the gate does see the change.
+Reads (`cat`, `git diff`, `grep`, `oasdiff`) pass. Nothing is sent to CodeRifts for a Bash call.
+
+It is **deny, not ask**: a hook `ask` was reported to override a settings deny rule
+(anthropics/claude-code #39344), and an escalation that can downgrade someone else's deny is
+not one.
+
+It is not a parser. A write that does not name the file (`python script.py`, a variable, a
+glob) is not recognised, and every shell refusal says so:
 
 Does not prove:
-  - that a contract artifact written via Bash or PowerShell was seen at all
+  - that a contract file written by a shell command this hook did not recognise was seen at all
+
+## Edit and MultiEdit
+
+`new_string` is a fragment, not the file. The gate reads the file on disk and sends it with the
+edit applied (MultiEdit: every edit, in order). An edit whose `old_string` is not in the file is
+not guessed: exit 2.
 
 ## Configuration
 

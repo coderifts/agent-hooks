@@ -216,7 +216,7 @@ export function resolveTarget(event, shapes) {
   const candidates = [fromParams, ...(event.derivedPaths ?? [])].filter((p) => typeof p === "string" && p);
   for (const p of candidates) {
     const type = classifyPath(p);
-    if (type) return { path: p, type, content: shape ? event.params?.[shape.content] : undefined };
+    if (type) return { path: p, type, content: shape ? event.params?.[shape.content] : undefined, apply: shape?.apply };
   }
   return null;
 }
@@ -236,7 +236,7 @@ export function createGate(config = {}, deps = {}) {
     // Not a contract artifact this gate recognises. Staying out of the way is not a fail-open: the
     // gate never claimed this call, and DOES_NOT_PROVE says as much on every refusal it does make.
     if (!target) return undefined;
-    if (typeof target.content !== "string") {
+    if (!target.apply && typeof target.content !== "string") {
       return ask(
         "CodeRifts gate could not read the proposed change",
         `${target.path} is a contract artifact, but this gate could not find the new content in the ` +
@@ -251,12 +251,24 @@ export function createGate(config = {}, deps = {}) {
       before = ""; // A new file. An empty "before" is a real change set, not a missing one.
     }
 
+    // A tool whose params carry an edit, not a body (Claude Code Edit/MultiEdit): the after body is
+    // the file with the edit applied. An edit that does not apply is put to a human — sending a
+    // fragment as the whole file would read as "everything else was removed".
+    const after = target.apply ? target.apply(event.params ?? {}, before) : target.content;
+    if (typeof after !== "string") {
+      return ask(
+        "CodeRifts gate could not read the proposed change",
+        `${target.path} is a contract artifact, but the edit in "${event.toolName}" does not apply to ` +
+          `the file as it is on disk. It will not pass a change it has not seen.`,
+      );
+    }
+
     const outcome = await call({
       endpoint,
       apiKey,
       timeoutMs,
       operation,
-      artifact: { id: target.path, type: target.type, before, after: target.content },
+      artifact: { id: target.path, type: target.type, before, after },
     });
     return decide(outcome, { operation, path: target.path });
   };

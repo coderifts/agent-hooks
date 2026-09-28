@@ -1,9 +1,9 @@
 {
-  "description": "Ask CodeRifts before Write/Edit of a contract artifact. Host timeout is 8s (seconds). Gate budget is 5000ms. If this process hangs past the host timeout, Claude Code fail-opens — named in the README.",
+  "description": "Ask CodeRifts before Write/Edit of a contract artifact; deny a Bash command that names one with a write shape. Host timeout is 8s (seconds). Gate budget is 5000ms. If this process hangs past the host timeout, Claude Code fail-opens — named in the README.",
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Write|Edit|MultiEdit",
+        "matcher": "Write|Edit|MultiEdit|Bash",
         "hooks": [
           {
             "type": "command",

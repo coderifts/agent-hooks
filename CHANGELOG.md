@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased — 2026-09-27
+
+### Fixed
+
+- **Edit sent a fragment as the whole file.** `new_string` went to CodeRifts as the after body, so a
+  one-line Edit read as "everything else was removed". The after body is now the file on disk with
+  the edit applied (`replace_all` honoured); MultiEdit applies `edits` in order (it used to read a
+  `content` key that MultiEdit does not have). An edit that does not apply → exit 2, nothing sent.
+  The 0.2.0 test that pinned the fragment is rewritten; its `old_string` was not in the fixture.
+
+### Changed
+
+- **The Bash hole is narrowed, not closed.** Matcher `Write|Edit|MultiEdit|Bash`. A Bash command that
+  names a recognised contract file with a write shape is **denied** with a pointer to Write/Edit;
+  reads pass; nothing is sent to CodeRifts. Deny, not ask (#39344: a hook ask was reported to
+  override a settings deny). A write that does not name the file is still not seen — the refusal
+  text says so. Same bypass class as anthropics/claude-code #31292.
+
 ## 0.2.0 — 2026-09-13
 
 **(a) New host.** Claude Code PreToolUse adapter. Same `gate.js`; new stdin envelope.
