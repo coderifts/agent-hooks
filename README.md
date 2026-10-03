@@ -87,12 +87,10 @@ copy of `@coderifts/contract-path`'s):
 - **A read passes**, even of a contract file: `cat openapi.yaml > /tmp/copy`, `cp openapi.yaml /tmp/`,
   `git diff`, `grep`, `oasdiff`.
 
-Measured on 2026-10-03 against 20,930 distinct Bash commands from local Claude Code sessions, read
-against a repository full of contract files: 15 named writes were denied and 261 commands asked
-(1.2%); against a repository without a contract file nothing asked. In a sample of 25 of those asks, 4
-rewrote the working tree (`git stash`, `git stash pop`) and 21 wrote a target the command text does not
-resolve (a variable set by an earlier command, a path computed in code). On the 22 benign forms of the Skillkeel tamper
-corpus nothing was refused or asked.
+Measured on 2026-10-03 on two corpora: the 22 benign forms of the Skillkeel tamper corpus pass; 12 of
+its 83 tamper cases ask, each a write that reaches the working tree without naming a file (`rm -rf .`,
+`git reset --hard`, `git clean -fdx`, `git checkout -- .`, `xargs rm`, a pipe into `sh`); of our 16
+contract-file-write cases, the 11 that change a contract are stopped and the 5 benign ones go through.
 
 An ask does not weaken a deny: on Claude Code 2.1.288 a settings `deny` rule held over this hook's
 `ask` and over an `allow` (measured in `bypassPermissions` mode). The earlier report that a hook ask
