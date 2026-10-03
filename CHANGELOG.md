@@ -8,6 +8,7 @@
 - **Artifact types are the change-set surface's own:** a `.proto` is sent as `grpc` and an MCP manifest or tool list as `mcp_manifest` (they were `protobuf` and `mcp`, which the surface does not analyze). `classifyPath` returns the new types; `ARTIFACT_TYPES` is gone.
 - **Bash, by write target.** A shell write to a named contract file is still denied. A read of one now passes (`cat openapi.yaml > /tmp/x` was denied before). A write that can reach a contract file without naming it (`find … -exec sed -i`, `xargs`, a glob, `rm -rf <dir>`, `git stash pop`, `git reset --hard`, a pipe into `sh`) now **asks** when a contract file is under its reach.
 - **Edit:** `replace_all` and the empty-`old_string` create form follow Claude Code; an edit that does not apply says which `old_string` was not found.
+- **Two more limits** on every refusal: that the hook was running (`disableAllHooks` in any settings file, `--safe-mode`, `--bare`), and that a contract generated from source code was checked.
 
 ## 0.2.2 — 2026-10-03
 

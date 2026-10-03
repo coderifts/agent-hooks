@@ -46,8 +46,10 @@ Does not prove:
   - that the bytes finally written are the bytes checked — nothing here locks the file between this answer and the write
   - that the other tool calls in this run were checked — each call is judged alone
   - that a contract artifact this gate does not recognise was seen at all
-  - that the call was refused when this hook is installed outside managed settings — since Claude Code 2.1.287 a user-installed mod runs before it, can answer the call so the hook never runs, and can approve a call the hook blocked; only a hook in managed settings is final
+  - that the call was refused when this hook is installed outside managed settings — since Claude Code 2.1.287 a user-installed mod runs before it, can answer the call so the hook never runs, and can approve a call the hook blocked; only a hook in managed settings is final, and a plugin hook runs after the mods even when managed settings force-enable the plugin
   - that a call was refused when the hook ran out of time — the fail-closed path covers an error inside the hook, not Claude Code's hook timeout: a timed-out PreToolUse command hook does not block the call (true for this hook only when CODERIFTS_TIMEOUT_MS is at least the hook timeout)
+  - that the hook was running — disableAllHooks in any settings file (the project's .claude/settings.json included, which a shell command can rewrite unless the sandbox protects it), --safe-mode or --bare turns it off
+  - that a contract generated from source code was checked — a contract generated from source code (annotations, decorators, a build step) changes when the source changes; the hooks see the source edit, not the contract; the required check sees the generated contract
 ```
 
 ## Fail-closed
