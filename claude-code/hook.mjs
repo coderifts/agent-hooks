@@ -8,32 +8,22 @@
  *   block               → JSON deny (reason includes Does not prove)
  *   transport/parse/throw → exit 2 + stderr  (the host is fail-open otherwise)
  *
- * Two Claude-specific inputs are resolved here, before the gate (2026-09-27):
- *   - Edit/MultiEdit carry an edit, not a body; `applyEdits` builds the after file from the one on disk.
- *   - Bash is not gated (the after bytes are unknown), but a command that names a recognised contract
- *     file with a write shape is denied with a pointer to Write/Edit, where the gate does see it.
+ * Which call touches a contract file is decided by contract-write.mjs, the one decision function
+ * `coderifts claude-hook` and the CodeRifts mod run too (0.3.0, 2026-10-03):
+ *   - Edit/MultiEdit carry an edit, not a body; the after file is the one on disk with it applied.
+ *   - Bash is not gated (the after bytes are unknown). A command that writes a named contract file
+ *     is denied with a pointer to Write/Edit, where the gate does see it; one that can write a
+ *     directory holding a contract without naming it (find -exec, xargs, a glob, a tree-wide git
+ *     restore, an interpreter, a pipe into sh) asks.
  */
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { classifyPath, createGate, DOES_NOT_PROVE } from "../gate.js";
+import { afterText, decideToolCall } from "../contract-write.mjs";
+import { createGate, DOES_NOT_PROVE, hostIo } from "../gate.js";
 
-/** One Claude Code edit applied to `text`; null when old_string is not there to replace. */
-function applyOne(text, { old_string: from, new_string: to, replace_all: all } = {}) {
-  if (typeof from !== "string" || typeof to !== "string") return null;
-  if (from === "") return text === "" ? to : null; // Claude Code's "create via Edit" shape
-  if (!text.includes(from)) return null;
-  return all ? text.split(from).join(to) : text.replace(from, () => to);
-}
-
-/** The file after an Edit (`params` is the edit) or a MultiEdit (`params.edits`, in order). */
+/** The file after an Edit (`params` is the edit) or a MultiEdit (`params.edits`, in order): contract-write's afterText. */
 export function applyEdits(params, before) {
-  const edits = Array.isArray(params.edits) ? params.edits : [params];
-  let text = before;
-  for (const e of edits) {
-    text = applyOne(text, e);
-    if (text === null) return null;
-  }
-  return text;
+  return afterText(Array.isArray(params.edits) ? "MultiEdit" : "Edit", params, before);
 }
 
 /** Claude Code Write/Edit/MultiEdit → the path/content keys `resolveTarget` reads. */
@@ -43,46 +33,36 @@ export const CLAUDE_TOOL_SHAPES = Object.freeze({
   MultiEdit: { path: "file_path", apply: applyEdits },
 });
 
-/*
- * A write shape in a shell command. Not a parser and not a gate: it only decides whether a command
- * that already NAMES a recognised contract file may be changing it. A miss is named in the refusal
- * text (and the README); a false hit costs one redirect to the Write/Edit tool.
- */
-const SHELL_WRITE = [
-  />/, // any redirect, incl. >> and heredoc targets
-  /\btee\b/,
-  /\b(sed|perl|ruby)\b[^|;&]*\s-[a-zA-Z]*i/,
-  /\b(cp|mv|rm|truncate|install|ln|rsync|dd|patch|unzip|tar)\b/,
-  /\bgit\s+(checkout|restore|apply|am|reset|stash|mv|rm)\b/,
-  /\bopen\s*\([^)]*,\s*['"][wax+]/,
-  /\b(writeFile(Sync)?|write_text|write_bytes)\b/,
-  /\b(curl|wget)\b[^|;&]*\s-(o|O)\b/,
-];
-
-/** Tokens a shell would split on, then the ones this gate recognises as a contract path. */
-function contractPathsIn(command) {
-  const tokens = command.split(/[\s;|&<>()'"`=,]+/).filter(Boolean);
-  return [...new Set(tokens.filter((t) => classifyPath(t)))];
-}
-
 const SHELL_DOES_NOT_PROVE = [
   "that a contract file written by a shell command this hook did not recognise was seen at all",
   ...DOES_NOT_PROVE.slice(1),
 ];
 
-export function shellContractWrite(command) {
-  if (typeof command !== "string") return null;
-  // A redirect into a file descriptor (2>&1, >&2) is not a write to a path.
-  const probe = command.replace(/\d?>&\d/g, " ");
-  const paths = contractPathsIn(probe);
-  if (!paths.length || !SHELL_WRITE.some((re) => re.test(probe))) return null;
-  return [
-    `CodeRifts cannot see a contract change made by a shell command (${paths.join(", ")}).`,
-    `Use the Write or Edit tool for contract files, so the change is checked before it lands.`,
-    `Proves: only that this command names a recognised contract file with a write shape.`,
+/** contract-write's Bash decision as this hook's text: refusal or ask, each with what it proves. */
+export async function shellDecision(command, io) {
+  const d = await decideToolCall({ tool: "Bash", input: { command } }, io);
+  if (d.action === "pass") return null;
+  const named = d.action === "refuse";
+  const lines = [
+    named
+      ? `CodeRifts cannot see a contract change made by a shell command (${d.paths.map((p) => p.path).join(", ")}).`
+      : `CodeRifts cannot see what this shell command writes under ${d.scopes.map((s) => (s === "." ? "the working tree" : s)).join(", ")}, and a contract file is there.`,
+    named
+      ? `Use the Write or Edit tool for contract files, so the change is checked before it lands.`
+      : `Use the Write or Edit tool for contract files, or confirm that this command leaves them alone.`,
+    named
+      ? `Proves: only that this command names a recognised contract file with a write shape.`
+      : `Proves: only that this command has a write shape (${d.by.join(", ")}) that can reach a contract file without naming it.`,
     `Does not prove:`,
     ...SHELL_DOES_NOT_PROVE.map((l) => `  - ${l}`),
-  ].join("\n");
+  ];
+  return { decision: named ? "deny" : "ask", text: lines.join("\n") };
+}
+
+/** Kept for 0.2.x callers: the refusal text for a command, or null (named writes only). */
+export async function shellContractWrite(command, io = hostIo(process.cwd())) {
+  const r = await shellDecision(command, io);
+  return r && r.decision === "deny" ? r.text : null;
 }
 
 const ASK_TITLES = new Set([
@@ -151,13 +131,18 @@ export async function runClaudeHook(stdinText, { env = process.env, deps } = {})
   }
 
   if (payload.tool_name === "Bash") {
-    const refusal = shellContractWrite(payload.tool_input?.command);
-    return refusal ? jsonDecision("deny", refusal) : emptyPass();
+    try {
+      const r = await shellDecision(String(payload.tool_input?.command ?? ""), hostIo(payload.cwd, deps?.readFile, deps?.listDir));
+      return r ? jsonDecision(r.decision, r.text) : emptyPass();
+    } catch (err) {
+      return failClosed(`CodeRifts Claude hook failed on a Bash call (${String(err?.message ?? err)}). Not knowing is not permission.`);
+    }
   }
 
   const event = {
     toolName: payload.tool_name,
     params: payload.tool_input ?? {},
+    cwd: payload.cwd,
   };
 
   try {

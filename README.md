@@ -69,21 +69,44 @@ lets the write through. That host behaviour cannot be fixed in this package.
 ## Shell writes (Claude Code)
 
 The Claude Code matcher is `Write|Edit|MultiEdit|Bash`. A shell command cannot be gated — the
-hook never sees the bytes it would leave — so the hook does something narrower: a Bash command
-that **names a recognised contract file and has a write shape** (a redirect, `tee`, `sed -i`,
-`perl -i`, `cp`/`mv`/`rm`, `git checkout|restore|apply`, `open(…, "w")`, `curl -o`, …) is
-**denied** with a pointer to the Write or Edit tool, where the gate does see the change.
-Reads (`cat`, `git diff`, `grep`, `oasdiff`) pass. Nothing is sent to CodeRifts for a Bash call.
+hook never sees the bytes it would leave — so the hook reads what the command **writes**, with the
+decision function `coderifts claude-hook` and the CodeRifts mod use too (`contract-write.mjs`, a
+copy of `@coderifts/contract-path`'s):
 
-It is **deny, not ask**: a hook `ask` was reported to override a settings deny rule
-(anthropics/claude-code #39344), and an escalation that can downgrade someone else's deny is
-not one.
+- **A write to a named contract file is denied** (a redirect into it, `tee`, `sed -i`/`perl -i`,
+  the destination of `cp`/`install`/`ln`/`rsync`, `mv`/`rm`, `git checkout|restore -- <file>`,
+  `--out <file>`, `open(<file>, "w")` in inline Python or Node, `curl -o`), with a pointer to the
+  Write or Edit tool, where the gate does see the change. Nothing is sent to CodeRifts for a Bash call.
+- **A write that can reach a contract file without naming it asks**: `find <dir> -exec sed -i …`
+  or `-delete`, `xargs` into a writer, a glob, `rm -rf <dir>`, `git stash pop`, `git reset --hard`,
+  `git checkout -- .`, inline code that walks a directory, a pipe into `sh`, a target the command
+  builds from a variable it does not set. It asks only when a contract file is under that
+  directory; `find . -name '*.pyc' -delete` and `rm -rf build` pass.
+- **A read passes**, even of a contract file: `cat openapi.yaml > /tmp/copy`, `cp openapi.yaml /tmp/`,
+  `git diff`, `grep`, `oasdiff`.
 
-It is not a parser. A write that does not name the file (`python script.py`, a variable, a
-glob) is not recognised, and every shell refusal says so:
+Measured on 2026-10-03 against 20,930 distinct Bash commands from local Claude Code sessions, read
+against a repository full of contract files: 15 named writes were denied and 261 commands asked
+(1.2%); against a repository without a contract file nothing asked. In a sample of 25 of those asks, 4
+rewrote the working tree (`git stash`, `git stash pop`) and 21 wrote a target the command text does not
+resolve (a variable set by an earlier command, a path computed in code). On the 22 benign forms of the Skillkeel tamper
+corpus nothing was refused or asked.
+
+An ask does not weaken a deny: on Claude Code 2.1.288 a settings `deny` rule held over this hook's
+`ask` and over an `allow` (measured in `bypassPermissions` mode). The earlier report that a hook ask
+overrode a deny rule (anthropics/claude-code #39344) did not reproduce.
+
+It reads the command text; it does not parse shell or run it. A command shape it does not recognise
+passes — a script that writes a contract file itself (`node scripts/generate.js`), a variable it
+cannot resolve to a name — and every shell refusal says so:
 
 Does not prove:
   - that a contract file written by a shell command this hook did not recognise was seen at all
+
+The sandbox closes what the text cannot: with `sandbox.filesystem.denyWrite` listing the contract
+paths, every sandboxed command and its child processes are refused the write (measured on macOS:
+`python -c`, `find -exec sed -i`, `xargs cp`, also in `bypassPermissions` mode; on Linux a wildcard
+entry is skipped, so list concrete paths). The Write and Edit tools stay with this hook.
 
 ## Edit and MultiEdit
 

@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased (0.3.0) — 2026-10-03
+
+### Changed
+
+- **One decision function with `coderifts claude-hook` and the CodeRifts mod.** `contract-write.mjs` (a byte copy of `@coderifts/contract-path`'s, with `contract-write.sha256` beside it) decides which path is a contract file and of what type, the text an Edit or MultiEdit leaves, and what a Bash command writes. `gate.js` and `claude-code/hook.mjs` keep no list of their own.
+- **Artifact types are the change-set surface's own:** a `.proto` is sent as `grpc` and an MCP manifest or tool list as `mcp_manifest` (they were `protobuf` and `mcp`, which the surface does not analyze). `classifyPath` returns the new types; `ARTIFACT_TYPES` is gone.
+- **Bash, by write target.** A shell write to a named contract file is still denied. A read of one now passes (`cat openapi.yaml > /tmp/x` was denied before). A write that can reach a contract file without naming it (`find … -exec sed -i`, `xargs`, a glob, `rm -rf <dir>`, `git stash pop`, `git reset --hard`, a pipe into `sh`) now **asks** when a contract file is under its reach.
+- **Edit:** `replace_all` and the empty-`old_string` create form follow Claude Code; an edit that does not apply says which `old_string` was not found.
+
 ## 0.2.2 — 2026-10-03
 
 ### Changed

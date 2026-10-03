@@ -4,24 +4,14 @@
  * `index.js` is the OpenClaw entry; everything decidable lives here.
  */
 
-import { readFile } from "node:fs/promises";
-
-/**
- * Path suffix -> the `type` the CodeRifts change-set surface expects.
- *
- * Deliberately a short, explicit list. A gate that tries to recognise every contract artifact ends
- * up guessing, and a gate that guesses either blocks documentation or waves through a schema. What
- * is not on this list is not gated — and the approval text says so, so nobody reads a CONTINUE as
- * "the whole change was checked".
- */
-export const ARTIFACT_TYPES = Object.freeze([
-  [/(^|\/)openapi[^/]*\.(ya?ml|json)$/i, "openapi"],
-  [/(^|\/)swagger[^/]*\.(ya?ml|json)$/i, "openapi"],
-  [/(^|\/)asyncapi[^/]*\.(ya?ml|json)$/i, "asyncapi"],
-  [/\.graphql$|\.gql$/i, "graphql"],
-  [/\.proto$/i, "protobuf"],
-  [/(^|\/)(mcp|tools)\.(wire\.v1\.)?json$/i, "mcp"],
-]);
+import { readFile, readdir } from "node:fs/promises";
+import { isAbsolute, resolve } from "node:path";
+// The one decision function this hook, `coderifts claude-hook` and the CodeRifts mod share
+// (2026-10-03): which path is a contract and of what type, the after text of an Edit, what a shell
+// command writes. A byte copy of @coderifts/contract-path's contract-write.mjs, written by the app's
+// scripts/generate-contract-write-copies.js; contract-write.sha256 beside it is checked by
+// test/contract-write-copy.test.js.
+import { contractType, decideToolCall, toolKind } from "./contract-write.mjs";
 
 /** Tools whose params carry a path and a new file body. */
 export const DEFAULT_TOOL_SHAPES = Object.freeze({
@@ -31,9 +21,15 @@ export const DEFAULT_TOOL_SHAPES = Object.freeze({
   str_replace_editor: { path: "path", content: "new_str" },
 });
 
+/**
+ * The contract type of a path (contract-write's list: OpenAPI/Swagger, AsyncAPI, GraphQL, protobuf,
+ * MCP manifests and tool lists, agent tool schemas), or null. Until 0.3.0 this file kept its own
+ * list and sent `protobuf` and `mcp`, which the change-set surface does not analyze; the types are
+ * now the surface's own (`grpc`, `mcp_manifest`). What is not on the list is not gated, and the
+ * refusal text says so.
+ */
 export function classifyPath(p) {
-  for (const [re, type] of ARTIFACT_TYPES) if (re.test(p)) return type;
-  return null;
+  return contractType(p);
 }
 
 /**
@@ -75,7 +71,7 @@ export function blockText(op, why) {
 }
 
 /** One JSON-RPC POST. No session handshake, no SDK — measured to be all the surface needs. */
-async function askCodeRifts({ endpoint, apiKey, timeoutMs, operation, artifact }) {
+export async function askCodeRifts({ endpoint, apiKey, timeoutMs, operation, artifact }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -223,6 +219,48 @@ export function resolveTarget(event, shapes) {
   return null;
 }
 
+/** The host readers contract-write takes: a missing file is null, an unreadable one throws. */
+export function hostIo(cwd, read = (p) => readFile(p, "utf8"), list = defaultListDir) {
+  const abs = (p) => (isAbsolute(p) ? p : resolve(cwd || process.cwd(), p));
+  return {
+    cwd: cwd || process.cwd(),
+    readFile: async (p) => {
+      try {
+        return await read(abs(p));
+      } catch (err) {
+        if (err && err.code === "ENOENT") return null;
+        throw err;
+      }
+    },
+    listDir: (dir) => list(abs(dir)),
+  };
+}
+
+async function defaultListDir(dir) {
+  try {
+    const entries = await readdir(dir, { withFileTypes: true });
+    return entries.map((e) => ({ name: e.name, kind: e.isDirectory() ? "directory" : "file" }));
+  } catch {
+    return null;
+  }
+}
+
+async function gateClaudeCall(event, { read, call, endpoint, apiKey, timeoutMs, operation }) {
+  const d = await decideToolCall({ tool: event.toolName, input: event.params ?? {} }, hostIo(event.cwd, read));
+  if (d.action === "pass") return undefined;
+  if (d.action !== "gate") {
+    return ask("CodeRifts gate could not read the proposed change", `${d.why}. It will not pass a change it has not seen.`);
+  }
+  const outcome = await call({
+    endpoint,
+    apiKey,
+    timeoutMs,
+    operation,
+    artifact: { id: d.path, type: d.type, before: d.before, after: d.after },
+  });
+  return decide(outcome, { operation, path: d.path });
+}
+
 /** The handler, with its I/O injected so a test can drive it without a network or a disk. */
 export function createGate(config = {}, deps = {}) {
   const endpoint = config.endpoint ?? "https://app.coderifts.com/mcp";
@@ -234,6 +272,11 @@ export function createGate(config = {}, deps = {}) {
   const read = deps.readFile ?? ((p) => readFile(p, "utf8"));
 
   return async function beforeToolCall(event) {
+    // A Claude Code file tool (Write / Edit / MultiEdit): contract-write decides the path, the type
+    // and the after text, as the CLI hook and the mod do.
+    const claudeTool = toolKind(event.toolName);
+    if (claudeTool && claudeTool !== "Bash") return gateClaudeCall(event, { read, call, endpoint, apiKey, timeoutMs, operation });
+
     const target = resolveTarget(event, shapes);
     // Not a contract artifact this gate recognises. Staying out of the way is not a fail-open: the
     // gate never claimed this call, and DOES_NOT_PROVE says as much on every refusal it does make.

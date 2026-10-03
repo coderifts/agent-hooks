@@ -99,7 +99,9 @@ describe("what it does not claim", () => {
   it("classifies only what it lists", () => {
     assert.equal(classifyPath("api/openapi.yaml"), "openapi");
     assert.equal(classifyPath("schema.graphql"), "graphql");
-    assert.equal(classifyPath("svc.proto"), "protobuf");
+    // 0.3.0: the change-set surface's own types (contract-write); `protobuf` was not analyzed there.
+    assert.equal(classifyPath("svc.proto"), "grpc");
+    assert.equal(classifyPath("mcp.json"), "mcp_manifest");
     assert.equal(classifyPath("docs/openapi-guide.md"), null);
     assert.equal(classifyPath("README.md"), null);
   });

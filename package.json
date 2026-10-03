@@ -16,6 +16,7 @@
   "files": [
     "index.js",
     "gate.js",
+    "contract-write.mjs",
     "openclaw.plugin.json",
     "README.md",
     "CHANGELOG.md",

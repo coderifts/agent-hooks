@@ -8,6 +8,9 @@
  *     denied with a pointer to Write/Edit, where the gate does see the change. A read passes.
  *     Deny, not ask: a hook "ask" was reported to override a settings deny rule (#39344), and an
  *     escalation that can downgrade someone else's deny is not an escalation.
+ *     0.3.0 (2026-10-03): the named write stays a deny. A write that can reach a contract without
+ *     naming it now asks (contract-write); measured on 2.1.288, a settings deny rule held over a
+ *     hook "ask" and over an "allow", so the ask downgrades nothing.
  * (2) Edit. `new_string` is a fragment, not the file. Sending it as the after body made every
  *     one-line Edit look like "everything else was removed". The after body is now the file with
  *     the replacement applied; a MultiEdit applies its edits in order; an edit whose old_string is
