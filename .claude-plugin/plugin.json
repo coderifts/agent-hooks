@@ -1,6 +1,6 @@
 {
   "name": "agent-hooks",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "description": "Ask CodeRifts before Claude Code writes a contract artifact (OpenAPI, AsyncAPI, GraphQL, protobuf, MCP manifest).",
   "author": {
     "name": "CodeRifts",
