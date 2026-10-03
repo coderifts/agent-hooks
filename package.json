@@ -1,6 +1,6 @@
 {
   "name": "@coderifts/agent-hooks",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Ask CodeRifts before an agent writes a contract artifact (OpenClaw before_tool_call and Claude Code PreToolUse).",
   "license": "MIT",
   "homepage": "https://github.com/coderifts/agent-hooks#readme",

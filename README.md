@@ -46,6 +46,8 @@ Does not prove:
   - that the bytes finally written are the bytes checked — nothing here locks the file between this answer and the write
   - that the other tool calls in this run were checked — each call is judged alone
   - that a contract artifact this gate does not recognise was seen at all
+  - that the call was refused when this hook is installed outside managed settings — since Claude Code 2.1.287 a user-installed mod runs before it, can answer the call so the hook never runs, and can approve a call the hook blocked; only a hook in managed settings is final
+  - that a call was refused when the hook ran out of time — the fail-closed path covers an error inside the hook, not Claude Code's hook timeout: a timed-out PreToolUse command hook does not block the call (true for this hook only when CODERIFTS_TIMEOUT_MS is at least the hook timeout)
 ```
 
 ## Fail-closed

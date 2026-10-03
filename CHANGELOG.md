@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.2 — 2026-10-03
+
+### Changed
+
+- **Every refusal names two more limits.** `DOES_NOT_PROVE` (gate.js), carried on every refusal and approval request, and inherited by the shell refusal, now also says:
+  - that a refusal by a hook installed outside managed settings is not final: since Claude Code 2.1.287 a user-installed mod runs before it, can answer the call so the hook never runs, and can approve a call the hook blocked;
+  - that a timed-out hook does not block the call: the fail-closed path covers an error inside the hook, not Claude Code's hook timeout. This holds for this hook only when `CODERIFTS_TIMEOUT_MS` is at least the hook timeout; the default 5000 ms aborts inside the 8 s timeout the snippet sets.
+
 ## Unreleased — 2026-09-27
 
 ### Fixed
