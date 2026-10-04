@@ -92,6 +92,8 @@ describe("Claude Code adapter mappings", () => {
     assert.equal(out.stdout, "");
     assert.match(out.stderr, /could not be reached/);
     assert.match(out.stderr, /not knowing is not permission/);
+    // 2026-10-04: the GOVERNANCE_UNAVAILABLE sentence the App, the CLI hook and the mod also write.
+    assert.match(out.stderr, /GOVERNANCE_UNAVAILABLE: CodeRifts could not decide \(CodeRifts could not be reached: no answer within 5000ms\); this is not a finding about your change\./);
   });
 
   it("unreadable CodeRifts answer → exit 2 + stderr", async () => {

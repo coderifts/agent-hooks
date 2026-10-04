@@ -122,6 +122,15 @@ export async function askCodeRifts({ endpoint, apiKey, timeoutMs, operation, art
   }
 }
 
+/**
+ * GOVERNANCE_UNAVAILABLE (2026-10-04): the one sentence the App, the CLI hook and the Claude Code mod
+ * write verbatim when CodeRifts could not decide. The call still stops; the sentence says the stop is
+ * about CodeRifts, not about the change.
+ */
+export function governanceUnavailable(why) {
+  return `GOVERNANCE_UNAVAILABLE: CodeRifts could not decide (${why}); this is not a finding about your change.`;
+}
+
 /** Ask for a human, always with a reason. Never `{}`. */
 const ask = (title, description) => ({
   requireApproval: {
@@ -146,6 +155,7 @@ export function decide(outcome, { operation, path }) {
     return ask(
       "CodeRifts did not answer",
       `${path} is a contract artifact and CodeRifts could not be reached (${outcome.detail}). ` +
+        `${governanceUnavailable(`CodeRifts could not be reached: ${outcome.detail}`)} ` +
         `No decision was obtained, and not knowing is not permission.`,
     );
   }
@@ -153,7 +163,8 @@ export function decide(outcome, { operation, path }) {
     return ask(
       "CodeRifts answer could not be read",
       `${path} is a contract artifact and CodeRifts replied with something this gate cannot interpret ` +
-        `(${outcome.detail}). No decision was obtained, and not knowing is not permission.`,
+        `(${outcome.detail}). ${governanceUnavailable(`the answer could not be read: ${outcome.detail}`)} ` +
+        `No decision was obtained, and not knowing is not permission.`,
     );
   }
 

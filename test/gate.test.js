@@ -67,6 +67,9 @@ describe("fail-closed — not knowing is not permission", () => {
       assert.ok(!out.block, `${label} is not a refusal — a human still decides`);
       assert.match(out.requireApproval.description, expected);
       assert.equal(out.requireApproval.timeoutBehavior, "deny");
+      // 2026-10-04: CodeRifts not deciding says so in the one shared sentence; a decision does not.
+      const notDeciding = reply.kind === "unreachable" || reply.kind === "unusable";
+      assert.equal(/GOVERNANCE_UNAVAILABLE: CodeRifts could not decide \(.+\); this is not a finding about your change\./.test(out.requireApproval.description), notDeciding);
     });
   }
 

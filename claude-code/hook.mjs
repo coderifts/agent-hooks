@@ -19,7 +19,7 @@
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterText, decideToolCall } from "../contract-write.mjs";
-import { createGate, DOES_NOT_PROVE, hostIo } from "../gate.js";
+import { createGate, DOES_NOT_PROVE, governanceUnavailable, hostIo } from "../gate.js";
 
 /** The file after an Edit (`params` is the edit) or a MultiEdit (`params.edits`, in order): contract-write's afterText. */
 export function applyEdits(params, before) {
@@ -135,7 +135,7 @@ export async function runClaudeHook(stdinText, { env = process.env, deps } = {})
       const r = await shellDecision(String(payload.tool_input?.command ?? ""), hostIo(payload.cwd, deps?.readFile, deps?.listDir));
       return r ? jsonDecision(r.decision, r.text) : emptyPass();
     } catch (err) {
-      return failClosed(`CodeRifts Claude hook failed on a Bash call (${String(err?.message ?? err)}). Not knowing is not permission.`);
+      return failClosed(`CodeRifts Claude hook failed on a Bash call (${String(err?.message ?? err)}). ${governanceUnavailable("the Bash check failed")} Not knowing is not permission.`);
     }
   }
 
@@ -151,7 +151,7 @@ export async function runClaudeHook(stdinText, { env = process.env, deps } = {})
     return mapGateResult(result);
   } catch (err) {
     return failClosed(
-      `CodeRifts Claude hook failed before a decision (${String(err?.message ?? err)}). Not knowing is not permission.`,
+      `CodeRifts Claude hook failed before a decision (${String(err?.message ?? err)}). ${governanceUnavailable("the hook failed before a decision")} Not knowing is not permission.`,
     );
   }
 }
