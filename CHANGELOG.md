@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1 — 2026-10-04
+
+### Changed
+
+- **When CodeRifts could not decide, the refusal says so in one sentence** — the one the GitHub App, `coderifts claude-hook` and the CodeRifts mod write: `GOVERNANCE_UNAVAILABLE: CodeRifts could not decide (<why>); this is not a finding about your change.` It is added to the unreachable and unreadable-answer approvals (`gate.js`) and to the Claude hook's fail-closed messages (`claude-code/hook.mjs`); nothing that stopped now passes. `governanceUnavailable(why)` is exported from `gate.js`.
+
 ## 0.3.0 — 2026-10-03
 
 ### Changed
