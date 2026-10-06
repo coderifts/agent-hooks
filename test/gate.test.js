@@ -104,7 +104,10 @@ describe("what it does not claim", () => {
     assert.equal(classifyPath("schema.graphql"), "graphql");
     // 0.3.0: the change-set surface's own types (contract-write); `protobuf` was not analyzed there.
     assert.equal(classifyPath("svc.proto"), "grpc");
-    assert.equal(classifyPath("mcp.json"), "mcp_manifest");
+    assert.equal(classifyPath("mcp/tools.json"), "mcp_manifest");
+    // contract-write 1.2.0: an MCP client configuration is not a contract (it carries `env` credentials).
+    assert.equal(classifyPath("mcp.json"), null);
+    assert.equal(classifyPath(".mcp.json"), null);
     assert.equal(classifyPath("docs/openapi-guide.md"), null);
     assert.equal(classifyPath("README.md"), null);
   });

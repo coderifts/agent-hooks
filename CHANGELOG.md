@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.2 — 2026-10-06
+### Fixed
+- **An MCP client configuration is never treated as a contract (contract-write 1.2.0, P65).** `.mcp.json`, `mcp.json`
+  (also under `.cursor/` and `.vscode/`), `claude_desktop_config.json` and `(cline_)mcp_settings.json`: an edit of one
+  sent its whole text, the servers' `env` credentials included, to CodeRifts preflight. They are decided by name and
+  never read; MCP tool manifests are unchanged.
+
 ## 0.3.1 — 2026-10-04
 
 ### Changed

@@ -5,7 +5,7 @@
     "repo": "coderifts/agent-hooks"
   },
   "description": "Host adapters for CodeRifts: Claude Code PreToolUse asks before Write/Edit of OpenAPI, AsyncAPI, GraphQL, protobuf, or MCP manifest files. Not the GitHub Action (coderifts/contract-gate) and not the guard library (@coderifts/agent-guard).",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "author": {
     "name": "CodeRifts",
     "email": "peter@coderifts.com"

@@ -45,7 +45,9 @@ describe("Bash that writes a recognised contract file", () => {
     "python3 -c \"open('asyncapi.yaml','w').write('x')\"",
     "perl -pi -e 's/a/b/' swagger.json",
     "mv new.yaml openapi.yaml",
-    "cp /tmp/x.json mcp.json",
+    // contract-write 1.2.0: `mcp.json` is an MCP client configuration (it holds the servers' `env` credentials),
+    // not a contract, and is never sent; a tool manifest is still a contract.
+    "cp /tmp/x.json mcp/tools.json",
     "rm api/openapi.yaml",
     "git checkout -- api/openapi.yaml",
     "cd api && sed -i 's/a/b/' ./openapi.yml",
