@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (0.3.3) — P65c
+## 0.3.3 — 2026-10-08
 ### Fixed
 - **A plain `mcp.json` is decided by its content (contract-write 1.3.0, P65c).** 0.3.2 skipped every `mcp.json` by
   name, which also skipped a server's tool manifest of that name. By name only `.mcp.json`, `.cursor/mcp.json`,
