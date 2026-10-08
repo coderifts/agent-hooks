@@ -106,7 +106,9 @@ describe("what it does not claim", () => {
     assert.equal(classifyPath("svc.proto"), "grpc");
     assert.equal(classifyPath("mcp/tools.json"), "mcp_manifest");
     // contract-write 1.2.0: an MCP client configuration is not a contract (it carries `env` credentials).
-    assert.equal(classifyPath("mcp.json"), null);
+    // 1.3.0 (P65c): by name only `.mcp.json` and the like; a plain mcp.json is a candidate, decided by
+    // content after the read (test/mcp-json-by-content.test.js).
+    assert.equal(classifyPath("mcp.json"), "mcp_manifest");
     assert.equal(classifyPath(".mcp.json"), null);
     assert.equal(classifyPath("docs/openapi-guide.md"), null);
     assert.equal(classifyPath("README.md"), null);

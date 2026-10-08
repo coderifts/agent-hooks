@@ -27,7 +27,7 @@
 // written by scripts/generate-contract-write-copies.js, byte for byte (the CommonJS twin is a
 // mechanical transform), and its --check fails on any difference. Do not edit a copy.
 
-export const CONTRACT_WRITE_VERSION = '1.2.0';
+export const CONTRACT_WRITE_VERSION = '1.3.0';
 
 /** What a shell write to a named contract file gets, and what an unnamed one gets. */
 export const SHELL_NAMED_DECISION = 'refuse';
@@ -45,12 +45,47 @@ export const CONTRACT_EXT = /\.(ya?ml|json|graphql|gql|proto)$/i;
  * 1.2.0 (2026-10-06, the Claude directory's hold MCP_FORWARDS_CREDENTIAL_ENV): an MCP CLIENT
  * configuration file — the list of servers a client starts, with their `env` credentials — is not a
  * contract. `.mcp.json` and `mcp.json` matched the list above (".json" + "mcp") as mcp_manifest, so an
- * Edit of one sent its whole text, tokens included, to preflight. Decided by name, so the file is never
- * read to decide; it wins over the project's own `schema:` list too. MCP tool manifests are unchanged.
+ * Edit of one sent its whole text, tokens included, to preflight. MCP tool manifests are unchanged.
  * P65 (2026-10-06): the required check uses this same pattern — index.cjs requires it from here, and its
  * looksLikeContractPath says no first, word for word as below.
+ *
+ * 1.3.0 (P65c, 2026-10-07): by NAME only the names that are a client configuration and nothing else —
+ * `.mcp.json` anywhere, `.cursor/mcp.json`, `.vscode/mcp.json`, `claude_desktop_config.json`,
+ * `(cline_)mcp_settings.json`. Those are never read, and they win over the project's own `schema:` list.
+ * Any other `mcp.json` (MCP_JSON_BY_CONTENT) is also the name a server's tool manifest carries
+ * (coderifts.com's own), so it is a candidate, read where it already is, and decided by mcpJsonKind:
+ * the hooks read it on disk and never send a client configuration; the required check decides after its
+ * own read (isClientConfigContent), and a client-configuration side counts as no file at all.
  */
-export const MCP_CLIENT_CONFIG = /(^|\/)(\.?mcp\.json|claude_desktop_config\.json|(cline_)?mcp_settings\.json)$/i;
+export const MCP_CLIENT_CONFIG = /(^|\/)(\.mcp\.json|\.cursor\/mcp\.json|\.vscode\/mcp\.json|claude_desktop_config\.json|(cline_)?mcp_settings\.json)$/i;
+
+/** A plain `mcp.json` that MCP_CLIENT_CONFIG does not take by name: decided by its content. */
+export const MCP_JSON_BY_CONTENT = /(^|\/)mcp\.json$/i;
+
+const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+/**
+ * 'client_config' when the text is a JSON object with `mcpServers` or `servers` (an object) and no
+ * `tools`; otherwise 'contract' — a `tools` key, any other shape, and text that does not parse
+ * (fail-closed: what cannot be read as a client configuration is checked as a contract).
+ */
+export function mcpJsonKind(text) {
+  let doc;
+  try {
+    doc = JSON.parse(String(text ?? '').replace(/^\uFEFF/, ''));
+  } catch {
+    return 'contract';
+  }
+  if (!isObject(doc) || 'tools' in doc) return 'contract';
+  return isObject(doc.mcpServers) || isObject(doc.servers) ? 'client_config' : 'contract';
+}
+
+/** True when `path` is decided by content and `text` (one side, present) is a client configuration. */
+export function isClientConfigContent(path, text) {
+  if (typeof text !== 'string' || text === '') return false;
+  const rel = normalizePath(path);
+  return MCP_JSON_BY_CONTENT.test(rel) && !MCP_CLIENT_CONFIG.test(rel) && mcpJsonKind(text) === 'client_config';
+}
 
 export function looksLikeContractPath(p) {
   const s = String(p || '').toLowerCase();
@@ -689,7 +724,28 @@ export async function decideToolCall(call, io = {}) {
   if (after === null) {
     return { action: 'refuse', reason: 'edit_does_not_apply', rel, type, why: `the ${kind} does not apply to ${rel} as it is on disk (${afterFailure(kind, input, before)}), so there is no after text to check` };
   }
+  // 1.3.0 (P65c): a plain mcp.json is decided by content, here, before anything is sent. A side that is
+  // a client configuration counts as no file: both such → pass; one → the manifest added or removed.
+  const clientBefore = isClientConfigContent(rel, before);
+  const clientAfter = isClientConfigContent(rel, after);
+  if (clientBefore || clientAfter) {
+    const b = clientBefore ? '' : before;
+    const a = clientAfter ? '' : after;
+    if (b === '' && a === '') return { action: 'pass', reason: 'mcp_client_config', rel };
+    return { action: 'gate', path: filePath, rel, type, before: b, after: a };
+  }
   return { action: 'gate', path: filePath, rel, type, before, after };
+}
+
+/** A shell write to a plain mcp.json that is a client configuration on disk is not a contract write. */
+async function clientConfigOnDisk(rel, io) {
+  if (!MCP_JSON_BY_CONTENT.test(rel) || !io.readFile) return false;
+  const root = normalizePath(io.cwd || '');
+  try {
+    return isClientConfigContent(rel, await io.readFile(root ? `${root}/${rel}` : rel));
+  } catch {
+    return false;
+  }
 }
 
 /** Is there a contract file under `scope`? Unknown (no reader, a limit hit) counts as yes. */
@@ -719,6 +775,7 @@ async function decideShell(command, io, opts) {
     const inTree = scopeInTree(target, io);
     if (inTree === null) continue;
     const type = inTree !== UNKNOWN && !/[*?]/.test(inTree) ? contractType(inTree, opts) : null;
+    if (type && await clientConfigOnDisk(inTree, io)) continue;
     if (type) named.push({ path: target, type, by });
     else scopes.set(inTree, [...(scopes.get(inTree) || []), by]);
   }

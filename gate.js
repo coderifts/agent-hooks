@@ -11,7 +11,7 @@ import { isAbsolute, resolve } from "node:path";
 // command writes. A byte copy of @coderifts/contract-path's contract-write.mjs, written by the app's
 // scripts/generate-contract-write-copies.js; contract-write.sha256 beside it is checked by
 // test/contract-write-copy.test.js.
-import { contractType, decideToolCall, toolKind } from "./contract-write.mjs";
+import { contractType, decideToolCall, isClientConfigContent, toolKind } from "./contract-write.mjs";
 
 /** Tools whose params carry a path and a new file body. */
 export const DEFAULT_TOOL_SHAPES = Object.freeze({
@@ -324,12 +324,21 @@ export function createGate(config = {}, deps = {}) {
       );
     }
 
+    // 0.3.3 (P65c): a plain mcp.json is decided by its content (contract-write's function), as on the
+    // Claude Code path. A side that is an MCP client configuration counts as no file and is never sent;
+    // both such sides → this gate never claimed the call.
+    const clientBefore = isClientConfigContent(target.path, before);
+    const clientAfter = isClientConfigContent(target.path, after);
+    const sentBefore = clientBefore ? "" : before;
+    const sentAfter = clientAfter ? "" : after;
+    if ((clientBefore || clientAfter) && sentBefore === "" && sentAfter === "") return undefined;
+
     const outcome = await call({
       endpoint,
       apiKey,
       timeoutMs,
       operation,
-      artifact: { id: target.path, type: target.type, before, after },
+      artifact: { id: target.path, type: target.type, before: sentBefore, after: sentAfter },
     });
     return decide(outcome, { operation, path: target.path });
   };

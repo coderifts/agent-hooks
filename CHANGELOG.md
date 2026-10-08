@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased (0.3.3) — P65c
+### Fixed
+- **A plain `mcp.json` is decided by its content (contract-write 1.3.0, P65c).** 0.3.2 skipped every `mcp.json` by
+  name, which also skipped a server's tool manifest of that name. By name only `.mcp.json`, `.cursor/mcp.json`,
+  `.vscode/mcp.json`, `claude_desktop_config.json` and `(cline_)mcp_settings.json` stay skipped (never read). Any
+  other `mcp.json` is read on disk: `mcpServers` / `servers` and no `tools` → a client configuration, nothing sent;
+  `tools`, any other shape, or unparseable → checked as a contract. A manifest rewritten into a client configuration
+  is checked as the manifest removed, without the client side. The same on the OpenClaw tool shapes (`write_file` …).
+
 ## 0.3.2 — 2026-10-06
 ### Fixed
 - **An MCP client configuration is never treated as a contract (contract-write 1.2.0, P65).** `.mcp.json`, `mcp.json`
