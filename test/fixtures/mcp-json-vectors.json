@@ -1,0 +1,66 @@
+{
+  "_note": "P65d (2026-10-09): the shared plain-mcp.json vectors. One file, consumed by every surface's suite (contract-path, the mod, coderifts claude-hook, the App; agent-hooks through generate-contract-write-copies.js; the contract-gate Action from the coderifts-app checkout). `token` is the probe every surface asserts is in no outbound payload unless carries_token is false. Do not edit a copy.",
+  "token": "ghp_PROBE_TOKEN_123",
+  "vectors": [
+    {
+      "id": "client_only",
+      "kind": "client_config",
+      "carries_token": true,
+      "text": "{\n  \"mcpServers\": {\n    \"gh\": {\n      \"command\": \"npx\",\n      \"args\": [\n        \"gh-mcp\"\n      ],\n      \"env\": {\n        \"GITHUB_TOKEN\": \"ghp_PROBE_TOKEN_123\"\n      }\n    }\n  }\n}"
+    },
+    {
+      "id": "manifest_only",
+      "kind": "contract",
+      "carries_token": false,
+      "text": "{\n  \"name\": \"x\",\n  \"tools\": [\n    {\n      \"name\": \"a\",\n      \"description\": \"a\",\n      \"inputSchema\": {\n        \"type\": \"object\"\n      }\n    },\n    {\n      \"name\": \"b\",\n      \"description\": \"b\",\n      \"inputSchema\": {\n        \"type\": \"object\"\n      }\n    }\n  ]\n}"
+    },
+    {
+      "id": "mixed_mcpServers_tools",
+      "kind": "mixed",
+      "carries_token": true,
+      "text": "{\n  \"mcpServers\": {\n    \"x\": {\n      \"command\": \"npx\",\n      \"env\": {\n        \"GITHUB_TOKEN\": \"ghp_PROBE_TOKEN_123\"\n      }\n    }\n  },\n  \"tools\": [\n    {\n      \"name\": \"a\"\n    }\n  ]\n}"
+    },
+    {
+      "id": "mixed_servers_tools_empty",
+      "kind": "mixed",
+      "carries_token": true,
+      "text": "{\n  \"servers\": {\n    \"x\": {\n      \"type\": \"stdio\",\n      \"command\": \"npx\",\n      \"env\": {\n        \"GITHUB_TOKEN\": \"ghp_PROBE_TOKEN_123\"\n      }\n    }\n  },\n  \"tools\": []\n}"
+    },
+    {
+      "id": "nested_tools_in_server",
+      "kind": "client_config",
+      "carries_token": true,
+      "text": "{\n  \"mcpServers\": {\n    \"x\": {\n      \"command\": \"npx\",\n      \"env\": {\n        \"GITHUB_TOKEN\": \"ghp_PROBE_TOKEN_123\"\n      },\n      \"tools\": [\n        \"a\"\n      ]\n    }\n  }\n}"
+    },
+    {
+      "id": "jsonc_client_config",
+      "kind": "unparseable",
+      "carries_token": true,
+      "text": "{\n  // the GitHub server\n  \"mcpServers\": { \"gh\": { \"command\": \"npx\", \"env\": { \"GITHUB_TOKEN\": \"ghp_PROBE_TOKEN_123\" } } }\n}\n"
+    },
+    {
+      "id": "trailing_comma_client_config",
+      "kind": "unparseable",
+      "carries_token": true,
+      "text": "{ \"mcpServers\": { \"gh\": { \"command\": \"npx\", \"env\": { \"GITHUB_TOKEN\": \"ghp_PROBE_TOKEN_123\" }, } } }\n"
+    },
+    {
+      "id": "unparseable_garbage",
+      "kind": "unparseable",
+      "carries_token": true,
+      "text": "not json at all ghp_PROBE_TOKEN_123\n"
+    },
+    {
+      "id": "non_object_json",
+      "kind": "contract",
+      "carries_token": false,
+      "text": "[\n  {\n    \"name\": \"a\",\n    \"inputSchema\": {\n      \"type\": \"object\"\n    }\n  }\n]"
+    },
+    {
+      "id": "BOM_prefixed_mixed",
+      "kind": "mixed",
+      "carries_token": true,
+      "text": "﻿{\n  \"mcpServers\": {\n    \"x\": {\n      \"command\": \"npx\",\n      \"env\": {\n        \"GITHUB_TOKEN\": \"ghp_PROBE_TOKEN_123\"\n      }\n    }\n  },\n  \"tools\": [\n    {\n      \"name\": \"a\"\n    }\n  ]\n}"
+    }
+  ]
+}

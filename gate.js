@@ -11,7 +11,7 @@ import { isAbsolute, resolve } from "node:path";
 // command writes. A byte copy of @coderifts/contract-path's contract-write.mjs, written by the app's
 // scripts/generate-contract-write-copies.js; contract-write.sha256 beside it is checked by
 // test/contract-write-copy.test.js.
-import { contractType, decideToolCall, isClientConfigContent, toolKind } from "./contract-write.mjs";
+import { contractType, decideToolCall, heldWhy, isClientConfigContent, mcpJsonContentKind, toolKind } from "./contract-write.mjs";
 
 /** Tools whose params carry a path and a new file body. */
 export const DEFAULT_TOOL_SHAPES = Object.freeze({
@@ -264,6 +264,9 @@ async function defaultListDir(dir) {
 async function gateClaudeCall(event, { read, call, endpoint, apiKey, timeoutMs, operation }) {
   const d = await decideToolCall({ tool: event.toolName, input: event.params ?? {} }, hostIo(event.cwd, read));
   if (d.action === "pass") return undefined;
+  // 0.3.4 (P65d): a plain mcp.json that is both a client configuration and a tool manifest, or that does
+  // not parse — contract-write's 'mcp_json_held'. Not sent, not passed: the user is asked, with its sentence.
+  if (d.reason === "mcp_json_held") return ask("CodeRifts gate: this mcp.json is not checked", d.why);
   if (d.action !== "gate") {
     return ask("CodeRifts gate could not read the proposed change", `${d.why}. It will not pass a change it has not seen.`);
   }
@@ -327,6 +330,10 @@ export function createGate(config = {}, deps = {}) {
     // 0.3.3 (P65c): a plain mcp.json is decided by its content (contract-write's function), as on the
     // Claude Code path. A side that is an MCP client configuration counts as no file and is never sent;
     // both such sides → this gate never claimed the call.
+    // 0.3.4 (P65d): a held side ('mixed' / 'unparseable') is never sent and not passed: ask, with the sentence.
+    const heldKind = [before, after].map((t) => mcpJsonContentKind(target.path, t)).find((k) => k === "mixed" || k === "unparseable");
+    if (heldKind) return ask("CodeRifts gate: this mcp.json is not checked", heldWhy(target.path, heldKind));
+
     const clientBefore = isClientConfigContent(target.path, before);
     const clientAfter = isClientConfigContent(target.path, after);
     const sentBefore = clientBefore ? "" : before;

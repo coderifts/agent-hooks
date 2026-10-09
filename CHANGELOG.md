@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased (0.3.4) — P65d
+### Fixed
+- **A plain `mcp.json` that is both an MCP client configuration and a tool manifest, or that does not parse, is not
+  read or sent and is not passed (contract-write 1.3.1).** On the Claude Code file tools and on the OpenClaw tool
+  shapes the gate asks, with one sentence: split the server list and the tool manifest into separate files, or make
+  the file valid JSON (no comments) to have it checked.
+
 ## 0.3.3 — 2026-10-08
 ### Fixed
 - **A plain `mcp.json` is decided by its content (contract-write 1.3.0, P65c).** 0.3.2 skipped every `mcp.json` by

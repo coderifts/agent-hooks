@@ -27,7 +27,7 @@
 // written by scripts/generate-contract-write-copies.js, byte for byte (the CommonJS twin is a
 // mechanical transform), and its --check fails on any difference. Do not edit a copy.
 
-export const CONTRACT_WRITE_VERSION = '1.3.0';
+export const CONTRACT_WRITE_VERSION = '1.3.1';
 
 /** What a shell write to a named contract file gets, and what an unnamed one gets. */
 export const SHELL_NAMED_DECISION = 'refuse';
@@ -65,26 +65,56 @@ export const MCP_JSON_BY_CONTENT = /(^|\/)mcp\.json$/i;
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 /**
- * 'client_config' when the text is a JSON object with `mcpServers` or `servers` (an object) and no
- * `tools`; otherwise 'contract' — a `tools` key, any other shape, and text that does not parse
- * (fail-closed: what cannot be read as a client configuration is checked as a contract).
+ * The kind of a plain mcp.json's text, from its parsed TOP-LEVEL object (a leading BOM is ignored):
+ *   'client_config'  `mcpServers` or `servers` (an object) and no `tools`: never sent, counts as no file
+ *   'mixed'          `mcpServers` or `servers` (an object) AND `tools`: never sent, and not passed (P65d)
+ *   'unparseable'    JSON.parse fails (comments, a trailing comma, …): never sent, and not passed (P65d)
+ *   'contract'       anything else: a `tools` key, an object without a server list, a parsed non-object
+ * 1.3.1 (P65d, 2026-10-09): 1.3.0 checked `tools` first and called a parse failure a contract, so a server
+ * list with a `tools` key, and a client configuration with a comment, were sent as contracts.
  */
 export function mcpJsonKind(text) {
   let doc;
   try {
     doc = JSON.parse(String(text ?? '').replace(/^\uFEFF/, ''));
   } catch {
-    return 'contract';
+    return 'unparseable';
   }
-  if (!isObject(doc) || 'tools' in doc) return 'contract';
-  return isObject(doc.mcpServers) || isObject(doc.servers) ? 'client_config' : 'contract';
+  if (!isObject(doc)) return 'contract';
+  const servers = isObject(doc.mcpServers) || isObject(doc.servers);
+  if (servers) return 'tools' in doc ? 'mixed' : 'client_config';
+  return 'contract';
+}
+
+/** The kind of one present side of a content-decided path; null for any other path or an empty side. */
+export function mcpJsonContentKind(path, text) {
+  if (typeof text !== 'string' || text === '') return null;
+  const rel = normalizePath(path);
+  if (!MCP_JSON_BY_CONTENT.test(rel) || MCP_CLIENT_CONFIG.test(rel)) return null;
+  return mcpJsonKind(text);
 }
 
 /** True when `path` is decided by content and `text` (one side, present) is a client configuration. */
 export function isClientConfigContent(path, text) {
-  if (typeof text !== 'string' || text === '') return false;
-  const rel = normalizePath(path);
-  return MCP_JSON_BY_CONTENT.test(rel) && !MCP_CLIENT_CONFIG.test(rel) && mcpJsonKind(text) === 'client_config';
+  return mcpJsonContentKind(path, text) === 'client_config';
+}
+
+/** 'mixed' or 'unparseable': never sent, and never passed silently — the hooks ask, the check is red. */
+export function isHeldContent(path, text) {
+  const k = mcpJsonContentKind(path, text);
+  return k === 'mixed' || k === 'unparseable';
+}
+
+/** Every side whose text no entry point sends: a client configuration, 'mixed', 'unparseable'. */
+export function isNeverSent(path, text) {
+  return isClientConfigContent(path, text) || isHeldContent(path, text);
+}
+
+/** The one sentence every entry point says for a held side; null for any other kind. */
+export function heldWhy(path, kind) {
+  if (kind === 'mixed') return `${path} is both an MCP client configuration and a tool manifest; it is not read or sent — split the server list and the tool manifest into separate files.`;
+  if (kind === 'unparseable') return `${path} does not parse as JSON; it is not read or sent — a client configuration may hold credentials. Make it valid JSON (no comments) to have it checked.`;
+  return null;
 }
 
 export function looksLikeContractPath(p) {
@@ -720,10 +750,16 @@ export async function decideToolCall(call, io = {}) {
   } catch (err) {
     return { action: 'refuse', reason: 'unreadable', rel, type, why: `${rel} is a contract file and could not be read (${String((err && err.message) || err)})` };
   }
+  // 1.3.1 (P65d): a held side ('mixed', 'unparseable') — the file on disk, or the text the call writes —
+  // is not sent and not passed: the hooks ask, with the sentence. Nothing of it is in the answer.
+  const heldBefore = mcpJsonContentKind(rel, before);
+  if (heldBefore === 'mixed' || heldBefore === 'unparseable') return held(rel, type, heldBefore);
   const after = afterText(kind, input, before);
   if (after === null) {
     return { action: 'refuse', reason: 'edit_does_not_apply', rel, type, why: `the ${kind} does not apply to ${rel} as it is on disk (${afterFailure(kind, input, before)}), so there is no after text to check` };
   }
+  const heldAfter = mcpJsonContentKind(rel, after);
+  if (heldAfter === 'mixed' || heldAfter === 'unparseable') return held(rel, type, heldAfter);
   // 1.3.0 (P65c): a plain mcp.json is decided by content, here, before anything is sent. A side that is
   // a client configuration counts as no file: both such → pass; one → the manifest added or removed.
   const clientBefore = isClientConfigContent(rel, before);
@@ -737,14 +773,22 @@ export async function decideToolCall(call, io = {}) {
   return { action: 'gate', path: filePath, rel, type, before, after };
 }
 
-/** A shell write to a plain mcp.json that is a client configuration on disk is not a contract write. */
-async function clientConfigOnDisk(rel, io) {
-  if (!MCP_JSON_BY_CONTENT.test(rel) || !io.readFile) return false;
+/** The answer for a held side: ask, with the sentence; no text of the file. */
+function held(rel, type, kind) {
+  return { action: 'ask', reason: 'mcp_json_held', rel, type, kind, scopes: [rel], why: heldWhy(rel, kind) };
+}
+
+/**
+ * The content kind of a plain mcp.json on disk, for a shell write that names it (null: not content-
+ * decided, missing, or unreadable — those stay the contract write they were).
+ */
+async function contentKindOnDisk(rel, io) {
+  if (!MCP_JSON_BY_CONTENT.test(rel) || !io.readFile) return null;
   const root = normalizePath(io.cwd || '');
   try {
-    return isClientConfigContent(rel, await io.readFile(root ? `${root}/${rel}` : rel));
+    return mcpJsonContentKind(rel, await io.readFile(root ? `${root}/${rel}` : rel));
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -770,12 +814,16 @@ async function mayHoldContract(scope, io, opts) {
 
 async function decideShell(command, io, opts) {
   const named = [];
+  const heldPaths = [];
   const scopes = new Map();
   for (const { target, by } of shellWrites(command)) {
     const inTree = scopeInTree(target, io);
     if (inTree === null) continue;
     const type = inTree !== UNKNOWN && !/[*?]/.test(inTree) ? contractType(inTree, opts) : null;
-    if (type && await clientConfigOnDisk(inTree, io)) continue;
+    const onDisk = type ? await contentKindOnDisk(inTree, io) : null;
+    if (onDisk === 'client_config') continue;
+    // 1.3.1 (P65d): a held file on disk is not a contract write to refuse, and not a pass: ask.
+    if (onDisk === 'mixed' || onDisk === 'unparseable') { heldPaths.push({ rel: inTree, kind: onDisk }); continue; }
     if (type) named.push({ path: target, type, by });
     else scopes.set(inTree, [...(scopes.get(inTree) || []), by]);
   }
@@ -785,6 +833,15 @@ async function decideShell(command, io, opts) {
       reason: 'shell_names_contract',
       paths: named,
       why: `this shell command writes ${named.map((n) => `${n.path} (${n.by})`).join(', ')}, and a shell write cannot be checked: the after text is not known. Use the Write or Edit tool for contract files`,
+    };
+  }
+  if (heldPaths.length) {
+    return {
+      action: 'ask',
+      reason: 'mcp_json_held',
+      kind: heldPaths[0].kind,
+      scopes: heldPaths.map((h) => h.rel),
+      why: heldPaths.map((h) => heldWhy(h.rel, h.kind)).join(' '),
     };
   }
   const reached = [];
