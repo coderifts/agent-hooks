@@ -27,7 +27,7 @@
 // written by scripts/generate-contract-write-copies.js, byte for byte (the CommonJS twin is a
 // mechanical transform), and its --check fails on any difference. Do not edit a copy.
 
-export const CONTRACT_WRITE_VERSION = '1.3.1';
+export const CONTRACT_WRITE_VERSION = '1.3.2';
 
 /** What a shell write to a named contract file gets, and what an unnamed one gets. */
 export const SHELL_NAMED_DECISION = 'refuse';
@@ -710,6 +710,67 @@ export async function findUnder(listDir, root, match, limits = LISTING_LIMITS) {
     queue = next;
   }
   return { found: null, complete: true };
+}
+
+// ---- what a host reads ahead of the decision ---------------------------------------------------
+
+/*
+ * 1.3.2 (2026-10-09, the CodeRifts mod, plugin 1.2.9): a host that cannot let this module call its
+ * readers (the Claude directory reads every `return` in a hook's text as the hook's answer, and every
+ * mods API call reached through a helper is listed "via" it) reads AHEAD instead: readPlan names every
+ * file and every listing root decideToolCall can ask for on this call, and pendingListings names the
+ * directories the walk under those roots can still ask for, given the listings already read. The host
+ * reads those, then passes decideToolCall an io that only looks the answers up. Pure: no I/O here.
+ */
+
+/**
+ * The reads decideToolCall can make for one call, from the same functions it decides with:
+ *   files  every path it can pass to io.readFile (verbatim)
+ *   roots  every listing root it can walk with io.listDir (findUnder's start, before normalizing)
+ * A superset: decideShell reads the named content-decided files of every target, and walks the
+ * scopes only when no target names a contract or a held file.
+ */
+export function readPlan(call, io = {}) {
+  const kind = toolKind(call && (call.tool ?? call.tool_name));
+  const input = (call && (call.input ?? call.tool_input)) || {};
+  const opts = { named: io.named || [], excluded: io.excluded || [] };
+  if (kind === 'Bash') {
+    const files = [];
+    const roots = [];
+    const root = normalizePath(io.cwd || '');
+    for (const { target } of shellWrites(String(field(input, 'command') ?? ''))) {
+      const inTree = scopeInTree(target, io);
+      if (inTree === null) continue;
+      const type = inTree !== UNKNOWN && !/[*?]/.test(inTree) ? contractType(inTree, opts) : null;
+      if (type) {
+        if (MCP_JSON_BY_CONTENT.test(inTree)) files.push(root ? `${root}/${inTree}` : inTree);
+      } else {
+        roots.push(listingRoot(inTree));
+      }
+    }
+    return { files: [...new Set(files)], roots: [...new Set(roots)] };
+  }
+  if (!kind) return { files: [], roots: [] };
+  const filePath = filePathOf(input);
+  if (!filePath) return { files: [], roots: [] };
+  return contractType(relativePath(io.cwd, filePath), opts) ? { files: [filePath], roots: [] } : { files: [], roots: [] };
+}
+
+/**
+ * The directories the walk under `roots` can still ask for, given `listings` ({ dir: entries | null },
+ * the one-level answers already read, keyed as findUnder asks for them). The walk is findUnder itself,
+ * never stopping at a match, within the same limits — so the directories decideToolCall's walk asks
+ * for are a subset of what this keeps naming until it names none.
+ */
+export async function pendingListings(roots, listings = {}, limits = LISTING_LIMITS) {
+  const missing = new Set();
+  const listDir = async (dir) => {
+    if (Object.prototype.hasOwnProperty.call(listings, dir)) return listings[dir];
+    missing.add(dir);
+    return null;
+  };
+  for (const r of roots || []) await findUnder(listDir, r, () => false, limits);
+  return [...missing];
 }
 
 // ---- the decision ------------------------------------------------------------------------------

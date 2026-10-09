@@ -16,6 +16,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { invokedDirectly } from '../entry-guard.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const MANIFESTS = Object.freeze(['.claude-plugin/plugin.json', 'openclaw.plugin.json', 'claude-code/marketplace-entry.json']);
@@ -43,7 +44,7 @@ export function write(root = ROOT) {
   return check(root);
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (invokedDirectly(process.argv[1], import.meta.url)) {
   const r = process.argv.includes('--check') ? check() : write();
   if (r.drift.length) {
     console.error(`sync-version: package.json is ${r.version}; ${r.drift.map((d) => `${d.file} is ${d.has}`).join(', ')}. Run: node scripts/sync-version.mjs`);

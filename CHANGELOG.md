@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.5 — 2026-10-09
+### Fixed
+- **The Claude Code hook runs when invoked through a symlinked path.** The entry check resolves the invoked path and this file. The same check in `scripts/sync-version.mjs` does too. If the check cannot tell, the entry runs.
+- **contract-write 1.3.2 (no decision changes).** The generated copy adds `readPlan` and `pendingListings`.
+
 ## 0.3.4 — 2026-10-09
 ### Fixed
 - **A plain `mcp.json` that is both an MCP client configuration and a tool manifest, or that does not parse, is not

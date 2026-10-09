@@ -16,9 +16,8 @@
  *     directory holding a contract without naming it (find -exec, xargs, a glob, a tree-wide git
  *     restore, an interpreter, a pipe into sh) asks.
  */
-import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import { afterText, decideToolCall } from "../contract-write.mjs";
+import { invokedDirectly } from "../entry-guard.mjs";
 import { createGate, DOES_NOT_PROVE, governanceUnavailable, hostIo } from "../gate.js";
 
 /** The file after an Edit (`params` is the edit) or a MultiEdit (`params.edits`, in order): contract-write's afterText. */
@@ -166,8 +165,6 @@ async function main() {
   process.exit(out.exitCode);
 }
 
-const invokedDirectly =
-  Boolean(process.argv[1]) && import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
-if (invokedDirectly) {
+if (invokedDirectly(process.argv[1], import.meta.url)) {
   main();
 }
