@@ -56,8 +56,14 @@ export const CONTRACT_EXT = /\.(ya?ml|json|graphql|gql|proto)$/i;
  * (coderifts.com's own), so it is a candidate, read where it already is, and decided by mcpJsonKind:
  * the hooks read it on disk and never send a client configuration; the required check decides after its
  * own read (isClientConfigContent), and a client-configuration side counts as no file at all.
+ *
+ * 1.3.2 (2026-10-21): the Grok Build configuration, `.grok/config.toml` in a project and
+ * `~/.grok/config.toml` for the user (any path ending in `/.grok/config.toml`). Its `[mcp_servers.*]`
+ * blocks name the servers the agent starts, with their env; docs.x.ai mcp-servers page, read
+ * 2026-10-18: "a project server with the same name as a user one replaces it entirely". Control-plane,
+ * never a contract: never read, and it wins over a project's `schema:` / specPath list as the rest do.
  */
-export const MCP_CLIENT_CONFIG = /(^|\/)(\.mcp\.json|\.cursor\/mcp\.json|\.vscode\/mcp\.json|claude_desktop_config\.json|(cline_)?mcp_settings\.json)$/i;
+export const MCP_CLIENT_CONFIG = /(^|\/)(\.mcp\.json|\.cursor\/mcp\.json|\.vscode\/mcp\.json|claude_desktop_config\.json|(cline_)?mcp_settings\.json|\.grok\/config\.toml)$/i;
 
 /** A plain `mcp.json` that MCP_CLIENT_CONFIG does not take by name: decided by its content. */
 export const MCP_JSON_BY_CONTENT = /(^|\/)mcp\.json$/i;
