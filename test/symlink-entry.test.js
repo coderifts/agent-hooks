@@ -212,7 +212,9 @@ describe("packed hook entry", { timeout: 180000 }, () => {
     fixed = installPacked(join(work, "fixed"), [], ROOT);
     published = installPacked(join(work, "published"), ["@coderifts/agent-hooks@0.3.4"], work);
     assert.equal(JSON.parse(readFileSync(join(published.pkg, "package.json"), "utf8")).version, "0.3.4");
-    assert.equal(JSON.parse(readFileSync(join(fixed.pkg, "package.json"), "utf8")).version, "0.3.5");
+    // The packed tree is this checkout: its version is package.json's, not a literal to bump by hand.
+    assert.equal(JSON.parse(readFileSync(join(fixed.pkg, "package.json"), "utf8")).version,
+      JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).version);
   });
 
   after(() => {

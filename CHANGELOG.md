@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.6 — 2026-10-25
+### Fixed
+- **`.grok/config.toml` is a client configuration, never a contract.** The contract-write copy adds it to
+  `MCP_CLIENT_CONFIG` (a project `.grok/config.toml` and the user's `~/.grok/config.toml`): it is never read or sent,
+  and it wins over a project's `schema:` / specPath list as the other client configurations do. `contract-write.sha256`
+  is re-pinned. This is the only change since 0.3.5 (`824b071`); there is no OpenClaw deny change in it. npm test: 97 tests, 97 pass.
+
 ## 0.3.5 — 2026-10-09
 ### Fixed
 - **The Claude Code hook runs when invoked through a symlinked path.** The entry check resolves the invoked path and this file. The same check in `scripts/sync-version.mjs` does too. If the check cannot tell, the entry runs.
