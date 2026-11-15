@@ -70,20 +70,142 @@ export const MCP_JSON_BY_CONTENT = /(^|\/)mcp\.json$/i;
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
+/*
+ * Round 10y: parseJsonStrict copied byte for byte from src/strict-json.js (itself the receipt-verifier
+ * function, 2c11499). This module imports nothing, so the reader lives here;
+ * test/strict-json-parity-app.test.js holds the function equal to the App copy. Do not edit it.
+ * A duplicate member throws. Text that is not JSON is not a rejection.
+ */
+function parseJsonStrict(text) {
+  const src = String(text);
+  let i = 0;
+  const fail = (code, pointer, detail) => {
+    const e = new SyntaxError(`${code}${pointer != null ? ` at ${pointer === '' ? '(root)' : pointer}` : ''}${detail ? `: ${detail}` : ''}`);
+    e.code = code;
+    e.pointer = pointer;
+    throw e;
+  };
+  const ptr = (base, token) => `${base}/${String(token).replace(/~/g, '~0').replace(/\//g, '~1')}`;
+  const ws = () => { while (i < src.length && (src[i] === ' ' || src[i] === '\t' || src[i] === '\n' || src[i] === '\r')) i += 1; };
+  const expect = (ch, at) => { if (src[i] !== ch) fail('invalid_json', at, `expected '${ch}' at offset ${i}`); i += 1; };
+
+  function str(at) {
+    expect('"', at);
+    let out = '';
+    for (;;) {
+      if (i >= src.length) fail('invalid_json', at, 'unterminated string');
+      const c = src[i];
+      if (c === '"') { i += 1; break; }
+      if (c === '\\') {
+        const e = src[i + 1];
+        const simple = { '"': '"', '\\': '\\', '/': '/', b: '\b', f: '\f', n: '\n', r: '\r', t: '\t' };
+        if (e in simple) { out += simple[e]; i += 2; continue; }
+        if (e === 'u' && /^[0-9a-fA-F]{4}$/.test(src.slice(i + 2, i + 6))) { out += String.fromCharCode(parseInt(src.slice(i + 2, i + 6), 16)); i += 6; continue; }
+        fail('invalid_json', at, `bad escape at offset ${i}`);
+      }
+      if (c.charCodeAt(0) < 0x20) fail('invalid_json', at, `control character in string at offset ${i}`);
+      out += c;
+      i += 1;
+    }
+    for (let k = 0; k < out.length; k += 1) {
+      const u = out.charCodeAt(k);
+      if (u >= 0xD800 && u <= 0xDBFF) {
+        const next = out.charCodeAt(k + 1);
+        if (next >= 0xDC00 && next <= 0xDFFF) { k += 1; continue; }
+        fail('lone_surrogate', at, `unpaired \\u${u.toString(16)}`);
+      }
+      if (u >= 0xDC00 && u <= 0xDFFF) fail('lone_surrogate', at, `unpaired \\u${u.toString(16)}`);
+    }
+    return out;
+  }
+
+  function num(at) {
+    const m = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/.exec(src.slice(i));
+    if (!m) fail('invalid_json', at, `unexpected '${src[i] === undefined ? 'end of input' : src[i]}' at offset ${i}`);
+    i += m[0].length;
+    const n = Number(m[0]);
+    if (!Number.isFinite(n)) fail('non_finite', at, m[0]);
+    return n;
+  }
+
+  function value(at) {
+    ws();
+    const c = src[i];
+    let v;
+    if (c === '{') {
+      i += 1;
+      v = {};
+      const seen = new Set();
+      ws();
+      if (src[i] === '}') { i += 1; return v; }
+      for (;;) {
+        ws();
+        const key = str(at);
+        const here = ptr(at, key);
+        if (seen.has(key)) fail('duplicate_key', here);
+        seen.add(key);
+        ws();
+        expect(':', here);
+        const member = value(here);
+        // JSON.parse makes "__proto__" an own data property; so does this.
+        Object.defineProperty(v, key, { value: member, writable: true, enumerable: true, configurable: true });
+        ws();
+        if (src[i] === ',') { i += 1; continue; }
+        expect('}', at);
+        break;
+      }
+    } else if (c === '[') {
+      i += 1;
+      v = [];
+      ws();
+      if (src[i] === ']') { i += 1; return v; }
+      for (;;) {
+        v.push(value(ptr(at, v.length)));
+        ws();
+        if (src[i] === ',') { i += 1; continue; }
+        expect(']', at);
+        break;
+      }
+    } else if (c === '"') {
+      v = str(at);
+    } else if (src.startsWith('true', i)) { i += 4; v = true; } else if (src.startsWith('false', i)) { i += 5; v = false; } else if (src.startsWith('null', i)) { i += 4; v = null; } else {
+      v = num(at);
+    }
+    return v;
+  }
+
+  const result = value('');
+  ws();
+  if (i !== src.length) fail('invalid_json', '', `unexpected data at offset ${i}`);
+  return result;
+}
+
+function isRejection(err) {
+  if (!err || typeof err.code !== 'string') return false;
+  if (err.code === 'invalid_json') return typeof err.pointer === 'string' && err.pointer !== '';
+  return ['duplicate_key', 'lone_surrogate', 'non_finite', 'invalid_utf8'].includes(err.code);
+}
+
 /**
  * The kind of a plain mcp.json's text, from its parsed TOP-LEVEL object (a leading BOM is ignored):
  *   'client_config'  `mcpServers` or `servers` (an object) and no `tools`: never sent, counts as no file
  *   'mixed'          `mcpServers` or `servers` (an object) AND `tools`: never sent, and not passed (P65d)
- *   'unparseable'    JSON.parse fails (comments, a trailing comma, …): never sent, and not passed (P65d)
+ *   'unparseable'    the text is not JSON (comments, a trailing comma, …): never sent, and not passed (P65d)
  *   'contract'       anything else: a `tools` key, an object without a server list, a parsed non-object
  * 1.3.1 (P65d, 2026-10-09): 1.3.0 checked `tools` first and called a parse failure a contract, so a server
  * list with a `tools` key, and a client configuration with a comment, were sent as contracts.
+ * Round 10y: the parse is parseJsonStrict. A duplicate member throws `duplicate_key` at its pointer
+ * (a lone surrogate or a non-finite number throws that reader's code too) instead of keeping the last value.
+ * Text that is not JSON still returns 'unparseable'.
  */
 export function mcpJsonKind(text) {
   let doc;
   try {
-    doc = JSON.parse(String(text ?? '').replace(/^\uFEFF/, ''));
-  } catch {
+    doc = parseJsonStrict(String(text ?? '').replace(/^\uFEFF/, ''));
+  } catch (err) {
+    // invalid_json is the old "does not parse" path (a comment, a trailing comma). The codes JSON.parse
+    // would accept — duplicate_key, lone_surrogate, non_finite — are the rejection.
+    if (isRejection(err) && err.code !== 'invalid_json') throw err;
     return 'unparseable';
   }
   if (!isObject(doc)) return 'contract';
@@ -97,7 +219,13 @@ export function mcpJsonContentKind(path, text) {
   if (typeof text !== 'string' || text === '') return null;
   const rel = normalizePath(path);
   if (!MCP_JSON_BY_CONTENT.test(rel) || MCP_CLIENT_CONFIG.test(rel)) return null;
-  return mcpJsonKind(text);
+  // A strict rejection is unreadable: hold it (unparseable), do not send the last value, do not crash the hook.
+  try {
+    return mcpJsonKind(text);
+  } catch (err) {
+    if (isRejection(err)) return 'unparseable';
+    throw err;
+  }
 }
 
 /** True when `path` is decided by content and `text` (one side, present) is a client configuration. */
