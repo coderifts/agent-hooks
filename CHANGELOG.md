@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.7 — 2026-11-16
+- The contract-write copy was regenerated: a duplicate JSON key is `duplicate_key` (edb4ee8).
+
 ## 0.3.6 — 2026-10-25
 ### Fixed
 - **`.grok/config.toml` is a client configuration, never a contract.** The contract-write copy adds it to
