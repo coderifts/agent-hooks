@@ -70,7 +70,7 @@ lets the write through. That host behaviour cannot be fixed in this package.
 
 ## Shell writes (Claude Code)
 
-The Claude Code matcher is `Write|Edit|MultiEdit|Bash`. A shell command cannot be gated — the
+The Claude Code matcher is `Write|Edit|MultiEdit|Bash|REPL`. A shell command cannot be gated — the
 hook never sees the bytes it would leave — so the hook reads what the command **writes**, with the
 decision function `coderifts claude-hook` and the CodeRifts mod use too (`contract-write.mjs`, a
 copy of `@coderifts/contract-path`'s):
@@ -84,6 +84,12 @@ copy of `@coderifts/contract-path`'s):
   `git checkout -- .`, inline code that walks a directory, a pipe into `sh`, a target the command
   builds from a variable it does not set. It asks only when a contract file is under that
   directory; `find . -name '*.pyc' -delete` and `rm -rf build` pass.
+- **Some unchecked shapes are denied.** `eval` is denied. A backtick, `$(…)`, or `base64 -d`
+  piped into `sh` or `bash` is denied when the ordinary decision would pass, and stays an ask when
+  a contract file may be in reach. `sh -c` and `bash -c` are denied when they have no write target;
+  a visible write keeps the ordinary decision (a non-contract `sed -i` inside `bash -c` still passes,
+  a named contract write stays the Write or Edit denial). `zsh -c` and `dash -c` are not in that list.
+  A pipe into `sh` that is not the base64 form still asks.
 - **A read passes**, even of a contract file: `cat openapi.yaml > /tmp/copy`, `cp openapi.yaml /tmp/`,
   `git diff`, `grep`, `oasdiff`.
 
@@ -98,7 +104,7 @@ overrode a deny rule (anthropics/claude-code #39344) did not reproduce.
 
 It reads the command text; it does not parse shell or run it. A command shape it does not recognise
 passes — a script that writes a contract file itself (`node scripts/generate.js`), a variable it
-cannot resolve to a name — and every shell refusal says so:
+cannot resolve to a name — except the unchecked shapes above, which are denied. Every shell refusal says so:
 
 Does not prove:
   - that a contract file written by a shell command this hook did not recognise was seen at all
@@ -107,6 +113,13 @@ The sandbox closes what the text cannot: with `sandbox.filesystem.denyWrite` lis
 paths, every sandboxed command and its child processes are refused the write (measured on macOS:
 `python -c`, `find -exec sed -i`, `xargs cp`, also in `bypassPermissions` mode; on Linux a wildcard
 entry is skipped, so list concrete paths). The Write and Edit tools stay with this hook.
+
+## REPL (Code Mode)
+
+The same matcher includes `REPL`. The hook reads `tool_input.code` as text and denies when that text
+contains an unchecked shell shape or a contract path. One line of the reason is: the hook does not
+see values computed at run time. A JavaScript template literal is not that shell form. A dollar sign
+immediately followed by a backtick, the zx call, is.
 
 ## Edit and MultiEdit
 

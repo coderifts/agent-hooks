@@ -15,8 +15,15 @@
  *     is denied with a pointer to Write/Edit, where the gate does see it; one that can write a
  *     directory holding a contract without naming it (find -exec, xargs, a glob, a tree-wide git
  *     restore, an interpreter, a pipe into sh) asks.
+ *   - contract-write already splits on &&, ||, ;, |, &, and newlines and keeps the strictest
+ *     result. eval is denied. A backtick, $(…), or base64 -d piped into sh or bash is denied
+ *     when the ordinary decision would pass, and left as an ask when a contract may be in reach.
+ *     sh -c / bash -c with no write target is denied; a visible write keeps the ordinary decision.
+ *     A named contract write stays that denial.
+ *   - REPL is matched for Code Mode. tool_input.code is read as text. A forbidden command or a
+ *     contract path denies. The reason says the hook does not see values computed at run time.
  */
-import { afterText, decideToolCall } from "../contract-write.mjs";
+import { afterText, contractType, decideToolCall, shellWriteTargets } from "../contract-write.mjs";
 import { invokedDirectly } from "../entry-guard.mjs";
 import { createGate, DOES_NOT_PROVE, governanceUnavailable, hostIo } from "../gate.js";
 
@@ -62,6 +69,145 @@ export async function shellDecision(command, io) {
 export async function shellContractWrite(command, io = hostIo(process.cwd())) {
   const r = await shellDecision(command, io);
   return r && r.decision === "deny" ? r.text : null;
+}
+
+const SHELL_PREFIXES = new Set(["sudo", "command", "exec", "time", "nohup", "env", "nice"]);
+
+/** Split on &&, ||, ;, |, &, and newlines, outside quotes. */
+function splitShell(command) {
+  const parts = [];
+  let cur = "";
+  let quote = null;
+  for (let i = 0; i < command.length; i += 1) {
+    const ch = command[i];
+    if (quote) {
+      cur += ch;
+      if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      cur += ch;
+      continue;
+    }
+    const two = command.slice(i, i + 2);
+    if (two === "&&" || two === "||") {
+      parts.push(cur);
+      cur = "";
+      i += 1;
+      continue;
+    }
+    if (ch === "|" || ch === ";" || ch === "\n" || (ch === "&" && command[i - 1] !== ">" && command[i + 1] !== ">")) {
+      parts.push(cur);
+      cur = "";
+      continue;
+    }
+    cur += ch;
+  }
+  parts.push(cur);
+  return parts;
+}
+
+function leadingArgv(segment) {
+  const words = [];
+  const re = /'([^']*)'|"((?:\\.|[^"\\])*)"|(\S+)/g;
+  let m;
+  while ((m = re.exec(segment)) !== null) words.push(m[1] ?? m[2] ?? m[3]);
+  let i = 0;
+  while (i < words.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i])) i += 1;
+  while (i < words.length && SHELL_PREFIXES.has(words[i])) i += 1;
+  return words.slice(i);
+}
+
+const hasCFlag = (argv) => argv.some((w) => w === "-c" || /^-[a-zA-Z]*c[a-zA-Z]*$/.test(w));
+
+function commandBase(segment) {
+  return String(leadingArgv(segment)[0] || "").split("/").pop();
+}
+
+const BASE64_PIPE = /base64\b[^|\n]*?(?:\s|^)(?:-d|--decode)\b[^|\n]*\|\s*(sh|bash)\b/;
+
+function shellCBase(text) {
+  for (const part of splitShell(text)) {
+    const base = commandBase(part);
+    if ((base === "sh" || base === "bash") && hasCFlag(leadingArgv(part))) return base;
+  }
+  return null;
+}
+
+/**
+ * Unchecked shape to deny, or null to keep the ordinary decision.
+ * `ordinary` is `pass` or `ask` (a named deny is returned before this runs).
+ * An ask is not upgraded: $(…) or a pipe into a shell that already asks stays an ask.
+ * eval is denied either way. sh -c / bash -c is denied only when it has no write target.
+ */
+function opaqueShellShape(command, ordinary) {
+  const text = String(command ?? "");
+  if (splitShell(text).some((part) => commandBase(part) === "eval")) return "eval";
+  if (ordinary === "ask") return null;
+  if (text.includes("`") || text.includes("$(")) return "command substitution";
+  if (BASE64_PIPE.test(text)) return "base64 -d piped into a shell";
+  const shell = shellCBase(text);
+  if (shell && shellWriteTargets(text).length === 0) return `${shell} -c`;
+  return null;
+}
+
+function opaqueDenyText(shape) {
+  return [
+    `CodeRifts cannot read this shell shape (${shape}), so the call is denied.`,
+    "The hook does not run the command. sh -c, bash -c, eval, $(…), a backtick, and base64 -d piped into a shell are denied even when the inner text would pass.",
+    "Not knowing is not permission.",
+  ].join("\n");
+}
+
+function contractPathsIn(text) {
+  const found = [];
+  const re = /['"]([^'"\n]+\.(?:ya?ml|json|graphql|gql|proto))['"]/gi;
+  for (const m of String(text).matchAll(re)) {
+    if (contractType(m[1]) && !found.includes(m[1])) found.push(m[1]);
+  }
+  return found;
+}
+
+/** $`…`, $(…), sh -c, bash -c, eval, or base64 -d piped into a shell, as text in REPL code. */
+function replOpaqueShape(code) {
+  const text = String(code ?? "");
+  if (/\$`[^`]*`/.test(text)) return "a $`…` shell template";
+  if (text.includes("$(")) return "command substitution";
+  if (/base64\b[^|\n]*?(?:\s|^)(?:-d|--decode)\b[^|\n]*\|\s*(sh|bash)\b/.test(text)) return "base64 -d piped into a shell";
+  if (/(?:^|[^A-Za-z0-9_./-])(?:sh|bash)(?:\s+-[A-Za-z]+)*\s+-c\b/.test(text)) return "sh -c or bash -c";
+  if (/(?:^|[^A-Za-z0-9_])eval(?=\s|\s*["'`(])/.test(text)) return "eval";
+  return null;
+}
+
+async function deniedCommandText(text, io) {
+  const re = /'([^']*)'|"([^"\\]*(?:\\.[^"\\]*)*)"/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const span = m[1] ?? m[2];
+    if (!span || span.length > 2000) continue;
+    const d = await shellDecision(span, io);
+    if (d?.decision === "deny") return span.slice(0, 160);
+  }
+  return null;
+}
+
+/** Denial text for REPL code, or null when the text names nothing this hook refuses. */
+async function replDecision(code, io) {
+  const text = String(code ?? "");
+  const paths = contractPathsIn(text);
+  const shape = replOpaqueShape(text);
+  const named = await deniedCommandText(text, io);
+  if (!paths.length && !shape && !named) return null;
+  const why = [
+    paths.length ? `a contract path (${paths.join(", ")})` : null,
+    shape ? `an unchecked shell shape (${shape})` : null,
+    named ? `a shell command that writes a contract file (${named})` : null,
+  ].filter(Boolean).join("; ");
+  return [
+    `CodeRifts denies this REPL program because its text contains ${why}.`,
+    "The hook does not see values computed at run time.",
+  ].join("\n");
 }
 
 const ASK_TITLES = new Set([
@@ -131,10 +277,25 @@ export async function runClaudeHook(stdinText, { env = process.env, deps } = {})
 
   if (payload.tool_name === "Bash") {
     try {
-      const r = await shellDecision(String(payload.tool_input?.command ?? ""), hostIo(payload.cwd, deps?.readFile, deps?.listDir));
+      const command = String(payload.tool_input?.command ?? "");
+      const io = hostIo(payload.cwd, deps?.readFile, deps?.listDir);
+      const r = await shellDecision(command, io);
+      if (r?.decision === "deny") return jsonDecision("deny", r.text);
+      const shape = opaqueShellShape(command, r?.decision ?? "pass");
+      if (shape) return jsonDecision("deny", opaqueDenyText(shape));
       return r ? jsonDecision(r.decision, r.text) : emptyPass();
     } catch (err) {
       return failClosed(`CodeRifts Claude hook failed on a Bash call (${String(err?.message ?? err)}). ${governanceUnavailable("the Bash check failed")} Not knowing is not permission.`);
+    }
+  }
+
+  if (payload.tool_name === "REPL") {
+    try {
+      const io = hostIo(payload.cwd, deps?.readFile, deps?.listDir);
+      const text = await replDecision(String(payload.tool_input?.code ?? ""), io);
+      return text ? jsonDecision("deny", text) : emptyPass();
+    } catch (err) {
+      return failClosed(`CodeRifts Claude hook failed on a REPL call (${String(err?.message ?? err)}). ${governanceUnavailable("the REPL check failed")} Not knowing is not permission.`);
     }
   }
 
