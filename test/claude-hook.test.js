@@ -83,7 +83,7 @@ describe("Claude Code adapter mappings", () => {
     assert.match(json.hookSpecificOutput.permissionDecisionReason, /ENDPOINT_REMOVAL/);
   });
 
-  it("unreachable CodeRifts → exit 2 + stderr (host is fail-open otherwise)", async () => {
+  it("unreachable CodeRifts → exit 2 + stderr (the gate's own rejection)", async () => {
     const out = await runClaudeHook(
       write("/tmp/api/openapi.yaml", OPENAPI),
       { deps: gateWith({ kind: "unreachable", detail: "no answer within 5000ms" }) },

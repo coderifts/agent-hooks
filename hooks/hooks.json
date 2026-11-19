@@ -1,5 +1,5 @@
 {
-  "description": "Ask CodeRifts before Write/Edit of a contract artifact; deny a Bash command that names one with a write shape; match REPL and read tool_input.code as text. Host timeout is 8s (seconds). Gate budget is 5000ms. The PreToolUse command sets \"onFailure\": \"block\", so a host timeout blocks the tool call.",
+  "description": "Ask CodeRifts before Write/Edit of a contract artifact; deny a Bash command that names one with a write shape; match REPL and read tool_input.code as text. Host timeout is 8s (seconds). Gate budget is 5000ms. The PreToolUse command sets \"onFailure\": \"block\", so a host timeout, an exit other than 0 or 2, and a missing executable block the tool call. Exit 2 remains the gate's own rejection.",
   "hooks": {
     "PreToolUse": [
       {

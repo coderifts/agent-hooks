@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.9 — Unreleased
+
+- The shipped PreToolUse command entries set `onFailure` to `"block"` (89d42dd). A host timeout, an exit other than 0 or 2, and a missing executable block the tool call. Exit 2 remains the gate's own rejection.
+- The README, the hook header, the refusal limit, and the hooks description now match that measured host behavior. Fail-open stays stated only for a command entry that does not set `onFailure`.
+- The `package.json` version changes at release, not in this round.
+
 ## 0.3.8 — 2026-11-19
 - PreToolUse also matches REPL and reads tool_input.code as text. A contract path or an unchecked shell shape in that text is denied, and the reason says the hook does not see values computed at run time.
 - Bash denies eval. It denies a backtick, $(…), or base64 -d piped into sh or bash when the ordinary decision would pass. It denies sh -c and bash -c when they have no write target. A named contract write is unchanged.

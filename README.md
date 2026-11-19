@@ -4,7 +4,8 @@ Asks CodeRifts before an agent writes a contract artifact — an OpenAPI, AsyncA
 protobuf or MCP manifest file. **Hosts today:** OpenClaw `before_tool_call` and Claude Code
 `PreToolUse`. **Not built:** the Docker MCP Gateway `before:exec` interceptor — that path
 was measured (empty stdout = pass, CallToolResult JSON = block, HTTP 4xx empty = fail-open)
-and has no adapter in this package yet.
+and has no adapter in this package yet. That fail-open is the measured gateway response.
+It is not the Claude Code host behavior of these PreToolUse entries.
 
 This is the host-adapter package. It is not `@coderifts/agent-guard` (the wrapWithGuard
 library) and not `coderifts/contract-gate` (the GitHub Action). The npm name used to be
@@ -21,7 +22,7 @@ Everything it cannot map, it puts to a human.
 | `CONTINUE`, `CONTINUE_WITH_MONITORING` | pass through | exit 0, empty stdout (never `allow`) |
 | `REQUEST_APPROVAL` | `requireApproval` | JSON `permissionDecision: "ask"` |
 | `STOP` | `block`, with the reason and its limits | JSON `permissionDecision: "deny"` |
-| anything else, or no answer | `requireApproval` | **exit 2 + stderr** (host is fail-open) |
+| anything else, or no answer | `requireApproval` | **exit 2 + stderr** (the gate's own rejection; exit 2 blocks) |
 
 ## What it does not do
 
@@ -47,7 +48,7 @@ Does not prove:
   - that the other tool calls in this run were checked — each call is judged alone
   - that a contract artifact this gate does not recognise was seen at all
   - that the call was refused when this hook is installed outside managed settings — since Claude Code 2.1.287 a user-installed mod runs before it, can answer the call so the hook never runs, and can approve a call the hook blocked; only a hook in managed settings is final, and a plugin hook runs after the mods even when managed settings force-enable the plugin
-  - that a call was refused when the hook ran out of time — the fail-closed path covers an error inside the hook, not Claude Code's hook timeout: a timed-out PreToolUse command hook does not block the call (true for this hook only when CODERIFTS_TIMEOUT_MS is at least the hook timeout)
+  - that a call was refused when a PreToolUse command entry without onFailure ran out of time — without onFailure, a host timeout, an exit other than 0 or 2, and a missing executable let the tool call proceed. The shipped PreToolUse command entries set onFailure to block, so those three block the tool call. Exit 2 remains the gate's own rejection
   - that the hook was running — disableAllHooks in any settings file (the project's .claude/settings.json included, which a shell command can rewrite unless the sandbox protects it), --safe-mode or --bare turns it off
   - that a contract generated from source code was checked — a contract generated from source code (annotations, decorators, a build step) changes when the source changes; the hooks see the source edit, not the contract; the required check sees the generated contract
 ```
@@ -62,10 +63,9 @@ The gate's own budget defaults to 5000 ms.
 On **OpenClaw**, that is well under the host's 15000 ms `before_tool_call` budget, so a slow
 answer becomes a readable approval request, not an opaque host denial. The host is fail-closed.
 
-On **Claude Code**, the host is **fail-open**: a timed-out command hook, exit 1, invalid JSON,
-or a missing script lets the tool run. The adapter therefore maps those failures to **exit 2**.
+On **Claude Code**, exit 2 is the gate's own rejection, and that exit blocks the tool call. The shipped PreToolUse command entries set `"onFailure": "block"`, so a host timeout, an exit other than 0 or 2, and a missing executable also block the tool call. Fail-open remains true for a command entry that does not set `onFailure`: a host timeout, an exit other than 0 or 2, and a missing executable then let the tool call proceed. The adapter maps an unreachable host, an unreadable answer, a throw, and bad stdin to **exit 2**.
 The hook entry sets `"timeout": 8` (**seconds** — Claude Code's unit, not milliseconds) so the
-gate's 5000 ms abort can finish first. The PreToolUse command entry sets `"onFailure": "block"`, so a host timeout, a missing executable, or an exit other than 0 or 2 blocks the tool call.
+gate's 5000 ms abort can finish first.
 
 ## Shell writes (Claude Code)
 

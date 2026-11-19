@@ -6,7 +6,11 @@
  *   undefined           → exit 0, empty stdout (NOT permissionDecision allow)
  *   requireApproval     → JSON ask  (named CodeRifts decision)
  *   block               → JSON deny (reason includes Does not prove)
- *   transport/parse/throw → exit 2 + stderr  (the host is fail-open otherwise)
+ *   transport/parse/throw → exit 2 + stderr  (the gate's own rejection; exit 2 blocks)
+ *
+ * The shipped PreToolUse command entries set onFailure to "block", so a host timeout, an exit
+ * other than 0 or 2, and a missing executable also block the tool call. A command entry that
+ * does not set onFailure stays fail-open on those three.
  *
  * Which call touches a contract file is decided by contract-write.mjs, the one decision function
  * `coderifts claude-hook` and the CodeRifts mod run too (0.3.0, 2026-10-03):
