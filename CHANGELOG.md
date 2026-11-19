@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.8 — 2026-11-19
+- PreToolUse also matches REPL and reads tool_input.code as text. A contract path or an unchecked shell shape in that text is denied, and the reason says the hook does not see values computed at run time.
+- Bash denies eval. It denies a backtick, $(…), or base64 -d piped into sh or bash when the ordinary decision would pass. It denies sh -c and bash -c when they have no write target. A named contract write is unchanged.
+
 ## 0.3.7 — 2026-11-16
 - The contract-write copy was regenerated: a duplicate JSON key is `duplicate_key` (edb4ee8).
 
