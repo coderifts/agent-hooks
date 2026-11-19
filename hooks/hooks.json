@@ -1,5 +1,5 @@
 {
-  "description": "Ask CodeRifts before Write/Edit of a contract artifact; deny a Bash command that names one with a write shape; match REPL and read tool_input.code as text. Host timeout is 8s (seconds). Gate budget is 5000ms. If this process hangs past the host timeout, Claude Code fail-opens — named in the README.",
+  "description": "Ask CodeRifts before Write/Edit of a contract artifact; deny a Bash command that names one with a write shape; match REPL and read tool_input.code as text. Host timeout is 8s (seconds). Gate budget is 5000ms. The PreToolUse command sets \"onFailure\": \"block\", so a host timeout blocks the tool call.",
   "hooks": {
     "PreToolUse": [
       {
@@ -8,6 +8,7 @@
           {
             "type": "command",
             "timeout": 8,
+            "onFailure": "block",
             "command": "node",
             "args": ["${CLAUDE_PLUGIN_ROOT}/claude-code/hook.mjs"]
           }

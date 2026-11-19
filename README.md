@@ -65,8 +65,7 @@ answer becomes a readable approval request, not an opaque host denial. The host 
 On **Claude Code**, the host is **fail-open**: a timed-out command hook, exit 1, invalid JSON,
 or a missing script lets the tool run. The adapter therefore maps those failures to **exit 2**.
 The hook entry sets `"timeout": 8` (**seconds** — Claude Code's unit, not milliseconds) so the
-gate's 5000 ms abort can finish first. If `node` itself hangs past 8 s, Claude Code still
-lets the write through. That host behaviour cannot be fixed in this package.
+gate's 5000 ms abort can finish first. The PreToolUse command entry sets `"onFailure": "block"`, so a host timeout, a missing executable, or an exit other than 0 or 2 blocks the tool call.
 
 ## Shell writes (Claude Code)
 
