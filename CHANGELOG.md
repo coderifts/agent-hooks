@@ -2,8 +2,9 @@
 
 ## 0.3.9 — Unreleased
 
-- The shipped PreToolUse command entries set `onFailure` to `"block"` (89d42dd). A host timeout, an exit other than 0 or 2, and a missing executable block the tool call. Exit 2 remains the gate's own rejection.
-- The README, the hook header, the refusal limit, and the hooks description now match that measured host behavior. Fail-open stays stated only for a command entry that does not set `onFailure`.
+- The shipped PreToolUse command entries set `onFailure` to `"block"` (89d42dd). The host effect (a timeout, an exit other than 0 or 2, and a missing executable block the tool call when onFailure is block, and stay fail-open otherwise) is stated on the Claude Code hooks documentation page, read 2026-11-20. It is not measured on a live host in this repository. The adapter's own exit 2 and the onFailure field are measured in the tests.
+- The README, the hook header, the refusal limit, and the hooks description state that same host effect: it is on the Claude Code hooks documentation page, read 2026-11-20, and it is not measured on a live host in this repository. The adapter's own exit 2 and the onFailure field are measured in the tests.
+- The refusal text and README now separate what is measured (with date and host version) from what is documented by the Claude Code hooks page and not measured here.
 - The `package.json` version changes at release, not in this round.
 
 ## 0.3.8 — 2026-11-19

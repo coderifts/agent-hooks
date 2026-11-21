@@ -1,8 +1,8 @@
 # CodeRifts agent hooks (`@coderifts/agent-hooks`)
 
-Asks CodeRifts before an agent writes a contract artifact — an OpenAPI, AsyncAPI, GraphQL,
+Asks CodeRifts before an agent writes a contract artifact - an OpenAPI, AsyncAPI, GraphQL,
 protobuf or MCP manifest file. **Hosts today:** OpenClaw `before_tool_call` and Claude Code
-`PreToolUse`. **Not built:** the Docker MCP Gateway `before:exec` interceptor — that path
+`PreToolUse`. **Not built:** the Docker MCP Gateway `before:exec` interceptor - that path
 was measured (empty stdout = pass, CallToolResult JSON = block, HTTP 4xx empty = fail-open)
 and has no adapter in this package yet. That fail-open is the measured gateway response.
 It is not the Claude Code host behavior of these PreToolUse entries.
@@ -22,7 +22,7 @@ Everything it cannot map, it puts to a human.
 | `CONTINUE`, `CONTINUE_WITH_MONITORING` | pass through | exit 0, empty stdout (never `allow`) |
 | `REQUEST_APPROVAL` | `requireApproval` | JSON `permissionDecision: "ask"` |
 | `STOP` | `block`, with the reason and its limits | JSON `permissionDecision: "deny"` |
-| anything else, or no answer | `requireApproval` | **exit 2 + stderr** (the gate's own rejection; exit 2 blocks) |
+| anything else, or no answer | `requireApproval` | **exit 2 + stderr** (the gate's own rejection; exit 2 blocks the tool call (Claude Code hooks documentation; measured 2026-09-13)) |
 
 ## What it does not do
 
@@ -30,27 +30,26 @@ Everything it cannot map, it puts to a human.
   The recognised set is a short, explicit list in `gate.js`; a gate that guesses at every file either
   blocks documentation or waves through a schema.
 - **It does not turn a risk number into a verdict.** Without an API key CodeRifts answers in
-  `analyze` mode, which returns `authorization_effect: "NONE"` and `may_execute: false` — risk
+  `analyze` mode, which returns `authorization_effect: "NONE"` and `may_execute: false` - risk
   information and no decision. The gate reports that and asks a human. It never reads a high score
   as a block or a low one as a pass.
 - **It does not lock the file.** The bytes checked are the bytes in the tool params at the moment of
   the call. Nothing here holds them between the answer and the write.
 
-Every refusal says so in its own text, so an agent reading the transcript can see how far the answer
-reaches:
+Every refusal says how far the answer reaches, in this text from `DOES_NOT_PROVE` in `gate.js`:
 
 ```
 CodeRifts refused this contract change.
 Reason: endpoint_removed — ENDPOINT_REMOVAL
 Proves: the change set as this call would leave it was refused by CodeRifts under operation "tool_call".
 Does not prove:
-  - that the bytes finally written are the bytes checked — nothing here locks the file between this answer and the write
-  - that the other tool calls in this run were checked — each call is judged alone
+  - that the bytes finally written are the bytes checked - nothing here locks the file between this answer and the write
+  - that the other tool calls in this run were checked - each call is judged alone
   - that a contract artifact this gate does not recognise was seen at all
-  - that the call was refused when this hook is installed outside managed settings — since Claude Code 2.1.287 a user-installed mod runs before it, can answer the call so the hook never runs, and can approve a call the hook blocked; only a hook in managed settings is final, and a plugin hook runs after the mods even when managed settings force-enable the plugin
-  - that a call was refused when a PreToolUse command entry without onFailure ran out of time — without onFailure, a host timeout, an exit other than 0 or 2, and a missing executable let the tool call proceed. The shipped PreToolUse command entries set onFailure to block, so those three block the tool call. Exit 2 remains the gate's own rejection
-  - that the hook was running — disableAllHooks in any settings file (the project's .claude/settings.json included, which a shell command can rewrite unless the sandbox protects it), --safe-mode or --bare turns it off
-  - that a contract generated from source code was checked — a contract generated from source code (annotations, decorators, a build step) changes when the source changes; the hooks see the source edit, not the contract; the required check sees the generated contract
+  - that the call was refused when this hook is installed outside managed settings - since Claude Code 2.1.287 a user-installed mod runs before it, can answer the call so the hook never runs, and can approve a call the hook blocked; only a hook in managed settings is final, and a plugin hook runs after the mods even when managed settings force-enable the plugin. Measured on Claude Code 2.1.287; the transcript is kept outside this repository.
+  - that a call was refused when a PreToolUse command entry ran out of time - the host effect (a timeout, an exit other than 0 or 2, and a missing executable block the tool call when onFailure is block, and stay fail-open otherwise) is stated on the Claude Code hooks documentation page, read 2026-11-20. It is not measured on a live host in this repository. The adapter's own exit 2 and the onFailure field are measured in the tests.
+  - that the hook was running - disableAllHooks in any settings file (the project's .claude/settings.json included, which a shell command can rewrite unless the sandbox protects it), --safe-mode or --bare turns it off. Measured 2026-10-03 on Claude Code 2.1.288; the transcript is kept outside this repository.
+  - that a contract generated from source code was checked - a contract generated from source code (annotations, decorators, a build step) changes when the source changes; the hooks see the source edit, not the contract; the required check sees the generated contract
 ```
 
 ## Fail-closed
@@ -63,14 +62,20 @@ The gate's own budget defaults to 5000 ms.
 On **OpenClaw**, that is well under the host's 15000 ms `before_tool_call` budget, so a slow
 answer becomes a readable approval request, not an opaque host denial. The host is fail-closed.
 
-On **Claude Code**, exit 2 is the gate's own rejection, and that exit blocks the tool call. The shipped PreToolUse command entries set `"onFailure": "block"`, so a host timeout, an exit other than 0 or 2, and a missing executable also block the tool call. Fail-open remains true for a command entry that does not set `onFailure`: a host timeout, an exit other than 0 or 2, and a missing executable then let the tool call proceed. The adapter maps an unreachable host, an unreadable answer, a throw, and bad stdin to **exit 2**.
-The hook entry sets `"timeout": 8` (**seconds** — Claude Code's unit, not milliseconds) so the
-gate's 5000 ms abort can finish first.
+On **Claude Code**, the adapter maps an unreachable host, an unreadable answer, a throw, and bad
+stdin to **exit 2** and stderr. That mapping is the gate's own rejection (`test/claude-hook.test.js`).
+Exit 2 blocks the tool call (Claude Code hooks documentation; measured 2026-09-13). The shipped
+PreToolUse command entries set `"onFailure": "block"` and `"timeout": 8`
+(`test/onfailure-block.test.js`). The host effect (a timeout, an exit other than 0 or 2, and a
+missing executable block the tool call when onFailure is block, and stay fail-open otherwise) is
+stated on the Claude Code hooks documentation page, read 2026-11-20. It is not measured on a live
+host in this repository. The adapter's own exit 2 and the onFailure field are measured in the tests.
+The gate aborts its own call at 5000 ms by default.
 
 ## Shell writes (Claude Code)
 
-The Claude Code matcher is `Write|Edit|MultiEdit|Bash|REPL`. A shell command cannot be gated — the
-hook never sees the bytes it would leave — so the hook reads what the command **writes**, with the
+The Claude Code matcher is `Write|Edit|MultiEdit|Bash|REPL`. A shell command cannot be gated - the
+hook never sees the bytes it would leave - so the hook reads what the command **writes**, with the
 decision function `coderifts claude-hook` and the CodeRifts mod use too (`contract-write.mjs`, a
 copy of `@coderifts/contract-path`'s):
 
@@ -97,21 +102,22 @@ its 83 tamper cases ask, each a write that reaches the working tree without nami
 `git reset --hard`, `git clean -fdx`, `git checkout -- .`, `xargs rm`, a pipe into `sh`); of our 16
 contract-file-write cases, the 11 that change a contract are stopped and the 5 benign ones go through.
 
-An ask does not weaken a deny: on Claude Code 2.1.288 a settings `deny` rule held over this hook's
-`ask` and over an `allow` (measured in `bypassPermissions` mode). The earlier report that a hook ask
-overrode a deny rule (anthropics/claude-code #39344) did not reproduce.
+An ask does not weaken a deny: a settings `deny` rule held over this hook's `ask` and over an
+`allow`, measured 2026-10-03 on Claude Code 2.1.288 in `bypassPermissions` mode;
+anthropics/claude-code #39344 did not reproduce; the transcript is kept outside this repository.
 
 It reads the command text; it does not parse shell or run it. A command shape it does not recognise
-passes — a script that writes a contract file itself (`node scripts/generate.js`), a variable it
-cannot resolve to a name — except the unchecked shapes above, which are denied. Every shell refusal says so:
+passes - a script that writes a contract file itself (`node scripts/generate.js`), a variable it
+cannot resolve to a name - except the unchecked shapes above, which are denied. Every shell refusal says so:
 
 Does not prove:
   - that a contract file written by a shell command this hook did not recognise was seen at all
 
 The sandbox closes what the text cannot: with `sandbox.filesystem.denyWrite` listing the contract
-paths, every sandboxed command and its child processes are refused the write (measured on macOS:
-`python -c`, `find -exec sed -i`, `xargs cp`, also in `bypassPermissions` mode; on Linux a wildcard
-entry is skipped, so list concrete paths). The Write and Edit tools stay with this hook.
+paths, every sandboxed command and its child processes are refused the write (measured 2026-10-03
+on macOS: `python -c`, `find -exec sed -i`, `xargs cp`, also in `bypassPermissions` mode; on Linux
+a wildcard entry is skipped, so list concrete paths; the transcript is kept outside this repository).
+The Write and Edit tools stay with this hook.
 
 ## REPL (Code Mode)
 
@@ -157,16 +163,16 @@ Registered on `before_tool_call` at `priority: 100`. OpenClaw runs handlers in d
 and keeps only the **first** `requireApproval`, so a gate that runs late can have its question
 dropped by an earlier plugin. A `block` is sticky and survives regardless of order.
 
-## Install — OpenClaw
+## Install - OpenClaw
 
 ```bash
 openclaw plugins install @coderifts/agent-hooks
 ```
 
-(OpenClaw still records the plugin under the runtime id `coderifts-contract-gate` — that is
+(OpenClaw still records the plugin under the runtime id `coderifts-contract-gate` - that is
 the OpenClaw config key, not the GitHub Action.)
 
-## Install — Claude Code
+## Install - Claude Code
 
 Copy `claude-code/settings.snippet.json` into `.claude/settings.json` (or merge the
 `hooks` key), after `npm install @coderifts/agent-hooks`. Optional env:
@@ -175,7 +181,7 @@ budget; default 5000).
 
 Plugin shape (for the existing `coderifts` marketplace): `.claude-plugin/plugin.json` +
 `hooks/hooks.json`. Add `claude-code/marketplace-entry.json` to
-`coderifts/api-governance` `.claude-plugin/marketplace.json` `plugins` array — that
+`coderifts/api-governance` `.claude-plugin/marketplace.json` `plugins` array - that
 catalog today lists only `api-governance`. Then:
 
 ```bash
@@ -183,8 +189,8 @@ claude plugin marketplace update coderifts
 claude plugin install agent-hooks@coderifts
 ```
 
-Do not use `permissionDecision: allow` for CONTINUE. Empty exit 0 leaves the normal
-permission prompt in place.
+Do not use `permissionDecision: allow` for CONTINUE. The adapter emits exit 0 and empty stdout
+(`test/claude-hook.test.js`). What the host shows after that exit is not measured in this repository.
 
 ## Test
 
@@ -193,6 +199,6 @@ npm test
 ```
 
 `npm test` includes a pack-then-install case. In-repo imports cannot see a
-`files` allowlist that dropped a relative module — that is how 0.1.0 shipped
+`files` allowlist that dropped a relative module - that is how 0.1.0 shipped
 without `gate.js`. The pack test also requires `claude-code/hook.mjs`. Do not
 skip it.

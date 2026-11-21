@@ -40,16 +40,17 @@ export function classifyPath(p) {
  * the human reading the transcript — exactly how far the answer reaches.
  */
 export const DOES_NOT_PROVE = Object.freeze([
-  "that the bytes finally written are the bytes checked — nothing here locks the file between this answer and the write",
-  "that the other tool calls in this run were checked — each call is judged alone",
+  "that the bytes finally written are the bytes checked - nothing here locks the file between this answer and the write",
+  "that the other tool calls in this run were checked - each call is judged alone",
   "that a contract artifact this gate does not recognise was seen at all",
-  "that the call was refused when this hook is installed outside managed settings — since Claude Code 2.1.287 a user-installed mod runs before it, can answer the call so the hook never runs, and can approve a call the hook blocked; only a hook in managed settings is final, and a plugin hook runs after the mods even when managed settings force-enable the plugin",
-  "that a call was refused when a PreToolUse command entry without onFailure ran out of time — without onFailure, a host timeout, an exit other than 0 or 2, and a missing executable let the tool call proceed. The shipped PreToolUse command entries set onFailure to block, so those three block the tool call. Exit 2 remains the gate's own rejection",
+  "that the call was refused when this hook is installed outside managed settings - since Claude Code 2.1.287 a user-installed mod runs before it, can answer the call so the hook never runs, and can approve a call the hook blocked; only a hook in managed settings is final, and a plugin hook runs after the mods even when managed settings force-enable the plugin. Measured on Claude Code 2.1.287; the transcript is kept outside this repository.",
+  "that a call was refused when a PreToolUse command entry ran out of time - the host effect (a timeout, an exit other than 0 or 2, and a missing executable block the tool call when onFailure is block, and stay fail-open otherwise) is stated on the Claude Code hooks documentation page, read 2026-11-20. It is not measured on a live host in this repository. The adapter's own exit 2 and the onFailure field are measured in the tests.",
   // 0.3.0 (2026-10-03), measured on Claude Code 2.1.288 with a probe plugin: disableAllHooks from
   // --settings and from the project's .claude/settings.json, --safe-mode and --bare each stopped a
   // plugin's PreToolUse hook; a shell command rewrote .claude/settings.json unless the sandbox was on.
-  "that the hook was running — disableAllHooks in any settings file (the project's .claude/settings.json included, which a shell command can rewrite unless the sandbox protects it), --safe-mode or --bare turns it off",
-  "that a contract generated from source code was checked — a contract generated from source code (annotations, decorators, a build step) changes when the source changes; the hooks see the source edit, not the contract; the required check sees the generated contract",
+  // The transcript is kept outside this repository.
+  "that the hook was running - disableAllHooks in any settings file (the project's .claude/settings.json included, which a shell command can rewrite unless the sandbox protects it), --safe-mode or --bare turns it off. Measured 2026-10-03 on Claude Code 2.1.288; the transcript is kept outside this repository.",
+  "that a contract generated from source code was checked - a contract generated from source code (annotations, decorators, a build step) changes when the source changes; the hooks see the source edit, not the contract; the required check sees the generated contract",
 ]);
 
 /**

@@ -1,5 +1,5 @@
 {
-  "description": "Ask CodeRifts before Write/Edit of a contract artifact; deny a Bash command that names one with a write shape; match REPL and read tool_input.code as text. Host timeout is 8s (seconds). Gate budget is 5000ms. The PreToolUse command sets \"onFailure\": \"block\", so a host timeout, an exit other than 0 or 2, and a missing executable block the tool call. Exit 2 remains the gate's own rejection.",
+  "description": "Ask CodeRifts before Write/Edit of a contract artifact; deny a Bash command that names one with a write shape; match REPL and read tool_input.code as text. Host timeout is 8s (seconds). Gate budget is 5000ms. The PreToolUse command sets \"onFailure\": \"block\". The host effect (a timeout, an exit other than 0 or 2, and a missing executable block the tool call when onFailure is block, and stay fail-open otherwise) is stated on the Claude Code hooks documentation page, read 2026-11-20. It is not measured on a live host in this repository. The adapter's own exit 2 and the onFailure field are measured in the tests.",
   "hooks": {
     "PreToolUse": [
       {

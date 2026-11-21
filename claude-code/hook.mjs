@@ -6,11 +6,13 @@
  *   undefined           → exit 0, empty stdout (NOT permissionDecision allow)
  *   requireApproval     → JSON ask  (named CodeRifts decision)
  *   block               → JSON deny (reason includes Does not prove)
- *   transport/parse/throw → exit 2 + stderr  (the gate's own rejection; exit 2 blocks)
+ *   transport/parse/throw → exit 2 + stderr (the gate's own rejection; exit 2 blocks
+ *                         the tool call (Claude Code hooks documentation; measured 2026-09-13))
  *
- * The shipped PreToolUse command entries set onFailure to "block", so a host timeout, an exit
- * other than 0 or 2, and a missing executable also block the tool call. A command entry that
- * does not set onFailure stays fail-open on those three.
+ * The host effect (a timeout, an exit other than 0 or 2, and a missing executable block the
+ * tool call when onFailure is block, and stay fail-open otherwise) is stated on the Claude Code
+ * hooks documentation page, read 2026-11-20. It is not measured on a live host in this repository.
+ * The adapter's own exit 2 and the onFailure field are measured in the tests.
  *
  * Which call touches a contract file is decided by contract-write.mjs, the one decision function
  * `coderifts claude-hook` and the CodeRifts mod run too (0.3.0, 2026-10-03):
