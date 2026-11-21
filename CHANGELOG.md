@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.9 — Unreleased
+## 0.3.9 — 2026-11-21
 
 - The shipped PreToolUse command entries set `onFailure` to `"block"` (89d42dd). The host effect (a timeout, an exit other than 0 or 2, and a missing executable block the tool call when onFailure is block, and stay fail-open otherwise) is stated on the Claude Code hooks documentation page, read 2026-11-20. It is not measured on a live host in this repository. The adapter's own exit 2 and the onFailure field are measured in the tests.
 - The README, the hook header, the refusal limit, and the hooks description state that same host effect: it is on the Claude Code hooks documentation page, read 2026-11-20, and it is not measured on a live host in this repository. The adapter's own exit 2 and the onFailure field are measured in the tests.
